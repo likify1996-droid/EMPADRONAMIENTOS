@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#0a0c10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FC Empadronamiento">
+<title>FC - Empadronamiento</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500&display=swap');
+:root{--bg:#0a0c10;--surface:#111318;--border:#1e2330;--accent:#00c6ff;--accent2:#0057ff;--text:#dce6f0;--muted:#5a6a80;--section:#0e1520;--danger:#ff4060;--green:#00cc66;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Exo 2',sans-serif;min-height:100vh;padding-bottom:80px;}
+header{background:linear-gradient(135deg,#050810,#0a1628);border-bottom:2px solid var(--accent);padding:16px 20px 12px;text-align:center;position:sticky;top:0;z-index:200;box-shadow:0 4px 30px rgba(0,198,255,.15);}
+header h1{font-family:'Rajdhani',sans-serif;font-size:1.4rem;font-weight:700;letter-spacing:4px;color:var(--accent);}
+header p{font-size:.65rem;color:var(--muted);letter-spacing:3px;margin-top:2px;}
+.container{max-width:700px;margin:0 auto;padding:16px 12px;}
+
+/* SCANNER */
+.scan-box{background:linear-gradient(135deg,rgba(0,87,255,.15),rgba(0,198,255,.08));border:1px dashed var(--accent);border-radius:10px;padding:16px;margin-bottom:18px;}
+.scan-box h3{font-family:'Rajdhani',sans-serif;font-size:.9rem;letter-spacing:2px;color:var(--accent);margin-bottom:10px;text-align:center;}
+.scan-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+.btn-scan{background:rgba(0,87,255,.3);border:1px solid var(--accent2);border-radius:6px;color:var(--text);font-family:'Exo 2',sans-serif;font-size:.82rem;padding:10px 16px;cursor:pointer;transition:background .2s;}
+.btn-scan:active{background:rgba(0,87,255,.6);}
+#scan-status{font-size:.72rem;color:var(--muted);margin-top:8px;text-align:center;min-height:16px;}
+#scanner-container{display:none;margin-top:12px;position:relative;}
+#scanner-video{width:100%;border-radius:8px;border:2px solid var(--accent);max-height:260px;object-fit:cover;display:block;}
+.scan-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:55px;border:2px solid var(--accent);border-radius:4px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;}
+.scan-line{position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);animation:scanline 1.5s linear infinite;}
+@keyframes scanline{0%{top:0}100%{top:58px}}
+#btn-stop-scan{display:none;width:100%;margin-top:8px;padding:8px;background:rgba(255,64,96,.15);border:1px solid var(--danger);border-radius:6px;color:var(--danger);font-family:'Rajdhani',sans-serif;font-size:.82rem;letter-spacing:1px;cursor:pointer;}
+
+/* SECTIONS */
+.section{background:var(--section);border:1px solid var(--border);border-left:3px solid var(--accent2);border-radius:8px;margin-bottom:14px;overflow:visible;}
+.section-title{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.82rem;letter-spacing:3px;color:var(--accent);background:rgba(0,87,255,.1);padding:10px 14px;text-transform:uppercase;border-bottom:1px solid var(--border);}
+.fields{padding:12px 14px;display:grid;gap:10px;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.field{display:flex;flex-direction:column;gap:4px;position:relative;}
+label{font-size:.65rem;font-weight:500;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+input,textarea,select{background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Exo 2',sans-serif;font-size:.85rem;padding:8px 10px;outline:none;transition:border-color .2s;width:100%;}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,198,255,.1);}
+select option{background:#111318;}
+textarea{resize:vertical;min-height:56px;}
+.btn-sec-clear{background:transparent;border:1px solid var(--danger);border-radius:4px;color:var(--danger);font-family:'Exo 2',sans-serif;font-size:.65rem;padding:3px 8px;cursor:pointer;white-space:nowrap;}
+.btn-sec-clear:active{background:rgba(255,64,96,.15);}
+.filled{border-color:var(--green)!important;background:rgba(0,204,102,.05)!important;}
+
+/* AUTOCOMPLETE */
+.autocomplete-list{position:absolute;top:100%;left:0;right:0;background:#151b28;border:1px solid var(--accent2);border-top:none;border-radius:0 0 6px 6px;z-index:400;max-height:180px;overflow-y:auto;display:none;}
+.autocomplete-list.show{display:block;}
+.ac-item{padding:8px 10px;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border);}
+.ac-item:hover,.ac-item:active{background:rgba(0,87,255,.35);}
+
+/* ADDRESS PREVIEW */
+.addr-preview{background:rgba(0,198,255,.05);border:1px solid var(--border);border-radius:5px;padding:8px 10px;font-size:.78rem;color:var(--accent);font-style:italic;min-height:34px;line-height:1.5;}
+
+/* GENERATE BTN */
+.btn-generate{width:100%;padding:15px;background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:8px;color:#fff;font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;letter-spacing:3px;cursor:pointer;margin-bottom:14px;box-shadow:0 4px 20px rgba(0,87,255,.4);transition:opacity .2s,transform .1s;}
+.btn-generate:active{transform:scale(.98);opacity:.9;}
+
+/* OUTPUT */
+.output-box{background:#050810;border:1px solid var(--accent);border-radius:8px;display:none;margin-bottom:10px;}
+.output-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(0,198,255,.05);}
+.output-header span{font-family:'Rajdhani',sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--accent);}
+.btn-copy{background:var(--accent2);border:none;border-radius:5px;color:#fff;font-family:'Rajdhani',sans-serif;font-size:.78rem;font-weight:600;letter-spacing:1px;padding:7px 16px;cursor:pointer;transition:background .2s;}
+.btn-copy.copied{background:var(--green);}
+#output-text{display:block;background:transparent;border:none;color:#b0c8e0;font-family:'Courier New',monospace;font-size:.75rem;line-height:1.7;padding:14px;width:100%;resize:none;outline:none;}
+.btn-clear{width:100%;padding:10px;background:transparent;border:1px solid var(--danger);border-radius:8px;color:var(--danger);font-family:'Rajdhani',sans-serif;font-size:.85rem;font-weight:600;letter-spacing:2px;cursor:pointer;margin-top:4px;}
+.btn-clear:active{background:rgba(255,64,96,.12);}
+@media(max-width:480px){.field-row{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ FUERZA CIVIL</h1>
+  <p>SISTEMA DE EMPADRONAMIENTO</p>
+</header>
+<div class="container">
+
+<!-- NÚMERO DE EMPADRONAMIENTO -->
+<div class="section" style="border-left-color:var(--accent);">
+  <div class="section-title">🔢 Número de Empadronamiento</div>
+  <div class="fields">
+    <div class="field">
+      <label>No. Empadronamiento (aparece en el encabezado como #número)</label>
+      <input type="text" id="num_emp" placeholder="001" style="font-size:1.1rem;font-weight:600;letter-spacing:2px;">
+    </div>
+  </div>
+</div>
+
+<!-- SCANNER — PEGAR CÓDIGO -->
+<div class="scan-box">
+  <h3>📋 DATOS DE CÓDIGO DE BARRAS</h3>
+  <div style="font-size:.7rem;color:var(--muted);text-align:center;margin-bottom:10px;">Lee el código con Google Lens u otra app y pega el texto aquí</div>
+  <div class="scan-btns" style="margin-bottom:10px;">
+    <button class="btn-scan" onclick="togglePaste('ine')">🪪 Pegar datos INE</button>
+    <button class="btn-scan" onclick="togglePaste('circ')">🚗 Pegar datos Circulación</button>
+  </div>
+  <div id="paste-ine" style="display:none;">
+    <textarea id="paste-ine-text" placeholder="Pega aquí el texto del código de barras del INE..." style="width:100%;min-height:80px;background:#0a0f1a;border:1px solid var(--accent2);border-radius:6px;color:var(--text);font-family:monospace;font-size:.75rem;padding:8px;outline:none;resize:vertical;"></textarea>
+    <button onclick="processPaste('ine')" style="width:100%;margin-top:6px;padding:8px;background:rgba(0,87,255,.4);border:1px solid var(--accent2);border-radius:6px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:.85rem;font-weight:600;letter-spacing:1px;cursor:pointer;">✅ Procesar INE</button>
+  </div>
+  <div id="paste-circ" style="display:none;">
+    <textarea id="paste-circ-text" placeholder="Pega aquí el texto del código de barras de la tarjeta de circulación..." style="width:100%;min-height:80px;background:#0a0f1a;border:1px solid var(--accent2);border-radius:6px;color:var(--text);font-family:monospace;font-size:.75rem;padding:8px;outline:none;resize:vertical;"></textarea>
+    <button onclick="processPaste('circ')" style="width:100%;margin-top:6px;padding:8px;background:rgba(0,87,255,.4);border:1px solid var(--accent2);border-radius:6px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:.85rem;font-weight:600;letter-spacing:1px;cursor:pointer;">✅ Procesar Circulación</button>
+  </div>
+  <div id="scan-status" style="font-size:.72rem;color:var(--muted);margin-top:6px;text-align:center;min-height:16px;"></div>
+</div>
+
+<!-- SERVICIO -->
+<div class="section">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>📋 Datos del Servicio</span>
+    <button class="btn-sec-clear" onclick="limpiarSeccion('servicio')">🗑 Limpiar</button>
+  </div>
+  <div class="fields">
+    <div class="field-row">
+      <div class="field"><label>Zona de Responsabilidad</label><input type="text" id="zona" placeholder="D1 C7"></div>
+      <div class="field"><label>N.E</label><input type="text" id="ne" placeholder="840951"></div>
+    </div>
+    <div class="field"><label>Nombre del Policía</label><input type="text" id="nombre_pol" placeholder="Pol. 3° Apellido Nombre"></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Categoría</label>
+        <select id="categoria" onchange="updateSubcat()">
+          <option value="">-- Seleccionar --</option>
+          <option>Entretenimiento</option><option>Comercio</option><option>Transporte</option>
+          <option>Seguridad</option><option>Sectores Vulnerables</option><option>General</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Subcategoría</label>
+        <select id="subcategoria"><option value="">-- Primero categoría --</option></select>
+      </div>
+    </div>
+    <!-- DIRECCIÓN LUGAR DE HECHOS -->
+    <div class="field" style="margin-bottom:2px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <label>Lugar de los Hechos</label>
+        <button onclick="geoLocate()" style="background:rgba(0,198,255,.2);border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:.65rem;padding:3px 8px;cursor:pointer;font-family:'Exo 2',sans-serif;">📍 Mi ubicación</button>
+      </div>
+    </div>
+    <div class="fields" style="padding:0;gap:8px;">
+      <div class="field-row">
+        <div class="field"><label>Calle</label><input type="text" id="addr_calle" placeholder="Puerto de Alvarado" oninput="buildAddr()"></div>
+        <div class="field"><label>Cruce con (opcional)</label><input type="text" id="addr_cruce" placeholder="C. Puerto Marqués" oninput="buildAddr()"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Colonia</label><input type="text" id="addr_colonia" placeholder="Las Brisas 7o. Sector" oninput="buildAddr()"></div>
+        <div class="field"><label>C.P.</label><input type="text" id="addr_cp" placeholder="64790" maxlength="5" oninput="buildAddr()"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Municipio</label><input type="text" id="addr_municipio" placeholder="Monterrey" oninput="buildAddr()"></div>
+        <div class="field"><label>Estado (fijo)</label><input type="text" id="addr_estado" value="N.L." readonly style="color:var(--muted);"></div>
+      </div>
+      <div class="addr-preview" id="addr-preview">La dirección aparecerá aquí...</div>
+    </div>
+    <div class="field" style="margin-top:6px;">
+      <label style="color:var(--accent);">— ó pegar directo —</label>
+      <textarea id="addr_texto" placeholder="Pega aquí la dirección completa&#10;Ej: Puerto de Alvarado cruce con C. Puerto Marqués, Las Brisas 7o. Sector, 64790 Monterrey, N.L." style="min-height:60px;" oninput="onAddrTexto()"></textarea>
+    </div>
+    <div id="geo-status" style="font-size:.7rem;color:var(--accent);text-align:center;display:none;"></div>
+    <div class="field-row">
+      <div class="field"><label>Fecha</label><input type="date" id="fecha"></div>
+      <div class="field"><label>Hora</label><input type="time" id="hora"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Folio C5</label><input type="text" id="folio"></div>
+      <div class="field"><label>CRP</label><input type="text" id="crp" placeholder="FC368A2"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Número de BODYCAM</label><input type="text" id="bodycam"></div>
+      <div class="field"><label>Motivo del Empadronamiento</label><input type="text" id="motivo" placeholder="Prevención del delito"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PERSONA -->
+<div class="section">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>👤 Persona</span>
+    <button class="btn-sec-clear" onclick="limpiarSeccion('persona')">🗑 Limpiar</button>
+  </div>
+  <div class="fields">
+    <div class="field-row">
+      <div class="field"><label>Sector Vulnerable</label><select id="vulnerable"><option value="No">No</option><option value="Sí">Sí</option></select></div>
+      <div class="field"><label>Sexo</label><select id="sexo"><option>Masculino</option><option>Femenino</option></select></div>
+    </div>
+    <div class="field"><label>Nombre Completo</label><input type="text" id="nombre" placeholder="Apellido Apellido Nombre"></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Fecha de Nacimiento (DD/MM/AAAA)</label>
+        <input type="text" id="nacimiento" placeholder="11/09/1996" maxlength="10" oninput="fmtNacInput(this)" onblur="calcEdad()">
+      </div>
+      <div class="field"><label>Edad</label><input type="number" id="edad" placeholder="28"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Estatura (metros)</label><input type="text" id="estatura" placeholder="1.65"></div>
+      <div class="field"><label>Teléfono</label><input type="text" id="telefono" placeholder="No proporciona"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Alias</label><input type="text" id="alias" placeholder="N/A"></div>
+      <div class="field"><label>Redes Sociales</label><input type="text" id="redes" placeholder="No proporciona"></div>
+    </div>
+    <div class="field"><label>Domicilio</label><textarea id="domicilio" placeholder="Calle, colonia, municipio..."></textarea></div>
+    <div class="field" style="position:relative">
+      <label>Estado de Origen</label>
+      <input type="text" id="estado_origen" placeholder="Nuevo León" autocomplete="off" oninput="acFilter('estado_origen','ac_edo_origen',ESTADOS)">
+      <div class="autocomplete-list" id="ac_edo_origen"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Estado Civil</label><select id="estado_civil"><option>Soltero</option><option>Casado</option><option>Divorciado</option><option>Viudo</option><option>Unión Libre</option></select></div>
+      <div class="field"><label>Escolaridad</label><select id="escolaridad"><option>Sin escolaridad</option><option>Primaria</option><option>Secundaria</option><option>Preparatoria</option><option>Técnico</option><option>Universidad</option><option>Posgrado</option></select></div>
+    </div>
+    <div class="field"><label>Oficio / Profesión</label><input type="text" id="oficio" placeholder="Repartidor"></div>
+    <div class="field"><label>Datos del Padre</label><input type="text" id="padre"></div>
+    <div class="field"><label>Datos de la Madre</label><input type="text" id="madre"></div>
+    <div class="field-row">
+      <div class="field"><label>Antecedentes Criminales</label><input type="text" id="antecedentes"></div>
+      <div class="field"><label>Grupo Criminal</label><input type="text" id="grupo"></div>
+    </div>
+    <div class="field"><label>Rol Criminal</label><input type="text" id="rol"></div>
+    <div class="field"><label>Datos Adicionales</label><textarea id="adicionales"></textarea></div>
+  </div>
+</div>
+
+<!-- TATUAJES -->
+<div class="section">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>🖋 Tatuajes</span>
+    <button class="btn-sec-clear" onclick="limpiarSeccion('tatuajes')">🗑 Limpiar</button>
+  </div>
+  <div class="fields">
+    <div class="field-row">
+      <div class="field"><label>Cantidad de Tatuajes</label><input type="number" id="tatuajes_cant" value="0" min="0"></div>
+      <div class="field"><label>Área del Cuerpo</label><input type="text" id="tatuajes_area" placeholder="Brazo, espalda..."></div>
+    </div>
+    <div class="field">
+      <label>Descripción (escribe o pega directamente)</label>
+      <textarea id="tatuajes_desc" placeholder="Descripción detallada de los tatuajes..." style="min-height:80px;"></textarea>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px;">
+      <label style="color:var(--accent);font-size:.68rem;letter-spacing:1.5px;">— Ó PEGAR BLOQUE COMPLETO —</label>
+      <textarea id="tatuajes_bloque" placeholder="Pega aquí el bloque completo:&#10;Cantidad de tatuajes: 6&#10;En qué área del cuerpo: Brazo...&#10;Descripción de los tatuajes:&#10;1. Brazo..." style="min-height:90px;margin-top:6px;font-size:.75rem;font-family:monospace;" oninput="parseTatuajesBloque()"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- VEHÍCULO -->
+<div class="section">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>🚗 Vehículo</span>
+    <button class="btn-sec-clear" onclick="limpiarSeccion('vehiculo')">🗑 Limpiar</button>
+  </div>
+  <div class="fields">
+    <div class="field-row">
+      <div class="field">
+        <label>Tipo de Vehículo</label>
+        <select id="tipo_vehiculo">
+          <option value="">-- Seleccionar --</option>
+          <optgroup label="2 Ruedas"><option>Motocicleta</option><option>Bicicleta</option><option>Monopatín / Scooter eléctrico</option></optgroup>
+          <optgroup label="Autos"><option>Sedán</option><option>Hatchback</option><option>Coupé</option></optgroup>
+          <optgroup label="Utilitarios"><option>Pick up</option><option>Camioneta SUV</option><option>Van / Minivan</option></optgroup>
+          <optgroup label="Carga"><option>Camión de carga</option><option>Camioneta de reparto</option><option>Tráiler</option></optgroup>
+          <optgroup label="Transporte Público"><option>Autobús</option><option>Microbús</option><option>Taxi</option></optgroup>
+          <optgroup label="Otros"><option>Triciclo</option><option>Cuatrimoto</option><option>Sin vehículo</option></optgroup>
+        </select>
+      </div>
+      <div class="field" style="position:relative">
+        <label>Marca</label>
+        <input type="text" id="marca" placeholder="Bajaj" autocomplete="off" oninput="onMarcaInput()">
+        <div class="autocomplete-list" id="ac_marca"></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field" style="position:relative">
+        <label>Sub Marca</label>
+        <input type="text" id="submarca" placeholder="Pulsar N 250 UG" autocomplete="off" oninput="acSubmarca()">
+        <div class="autocomplete-list" id="ac_submarca"></div>
+      </div>
+      <div class="field"><label>Modelo</label><input type="text" id="modelo" placeholder="Pulsar N 250"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Año</label><input type="number" id="anio" placeholder="2025" min="1970" max="2030"></div>
+      <div class="field"><label>Color</label><input type="text" id="color" placeholder="Azul con Negro"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Placas</label><input type="text" id="placas" placeholder="63SHP3" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+      <div class="field" style="position:relative">
+        <label>Estado de Placas</label>
+        <input type="text" id="estado_placas" placeholder="Nuevo León" autocomplete="off" oninput="acFilter('estado_placas','ac_edo_placas',ESTADOS)">
+        <div class="autocomplete-list" id="ac_edo_placas"></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Documentación Completa</label><select id="documentacion"><option value="">--</option><option>Sí</option><option>No</option><option>Parcial</option></select></div>
+    </div>
+    <div class="field"><label>Número de Serie</label><input type="text" id="serie" placeholder="MD2B97FX7SCK80149" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+    <div class="field-row">
+      <div class="field"><label>Número de Motor</label><input type="text" id="motor"></div>
+      <div class="field"><label>NIV</label><input type="text" id="niv"></div>
+    </div>
+    <div class="field"><label>Detallado / Observaciones</label><textarea id="observaciones"></textarea></div>
+  </div>
+</div>
+
+<button class="btn-generate" onclick="generar()">⚡ GENERAR REPORTE</button>
+
+<div class="output-box" id="output-box">
+  <div class="output-header">
+    <span>📤 Listo para WhatsApp</span>
+    <button class="btn-copy" id="btn-copy" onclick="copiar()">📋 Copiar</button>
+  </div>
+  <textarea id="output-text" readonly></textarea>
+</div>
+
+<button class="btn-clear" onclick="limpiar()">🗑 Limpiar Formulario</button>
+</div>
+
+<script>
+// ── DATOS ──────────────────────────────────────────────
+const SUBCATS={
+  'Entretenimiento':['Bar o Centro Nocturno','Table dance','Centros de apuestas','Evento masivo','Otro'],
+  'Comercio':['Comercio ambulante','Cachimba','Reciclador o pepenador','Tianguis','Comercio formal','Yonke','Casa de Empeño','Depósito de alcohol','Otro'],
+  'Transporte':['Taxi con permiso','Taxi pirata','Mototaxi','Taxi de aplicación','Repartidor','Transporte de personal','Transporte de carga','Otro'],
+  'Seguridad':['Personal de Seguridad Privada','Escoltas','Personal o expersonal de Seguridad Pública','Personal o expersonal de Fuerzas Armadas','Otro'],
+  'Sectores Vulnerables':['Indigente','Indígenas','Migrante','Persona con trastornos mentales','Persona con adicciones','Persona con discapacidad','Centro de Rehabilitación','Otro'],
+  'General':['Actividad sospechosa','Conducta de riesgo','Otro']
+};
+const ESTADOS=['Aguascalientes','Baja California','Baja California Sur','Campeche','Chiapas','Chihuahua','Ciudad de México','Coahuila','Colima','Durango','Estado de México','Guanajuato','Guerrero','Hidalgo','Jalisco','Michoacán','Morelos','Nayarit','Nuevo León','Oaxaca','Puebla','Querétaro','Quintana Roo','San Luis Potosí','Sinaloa','Sonora','Tabasco','Tamaulipas','Tlaxcala','Veracruz','Yucatán','Zacatecas'];
+const MARCAS=['Acura','Alfa Romeo','Audi','Bajaj','BMW','Buick','Cadillac','Carabela','Chevrolet','Chrysler','Citroën','Dodge','Ducati','FAW','Ferrari','Fiat','Ford','Geely','Genesis','GMC','Great Wall','Harley-Davidson','Haval','Hero','Honda','Hyundai','Infiniti','Isuzu','Italika','JAC','Jaguar','Jeep','Jetour','Kawasaki','Kia','KTM','Lamborghini','Land Rover','Lexus','Lincoln','Maserati','Mazda','Mercedes-Benz','MG','MINI','Mitsubishi','Nissan','OMODA','Peugeot','Porsche','RAM','Renault','Royal Enfield','SEAT','Shineray','Subaru','Suzuki','Tesla','Toyota','TVS','Vento','Volkswagen','Volvo','Yamaha'];
+const SUBMARCAS={
+  'Bajaj':['Pulsar NS 160','Pulsar NS 200','Pulsar N 250','Pulsar RS 200','Dominar 400','Boxer CT 100','Avenger 220'],
+  'Honda':['CB 150F','CB 190R','CBR 250R','CBR 600RR','CRF 150F','CRF 300L','CB500F','Forza 350','PCX 150','Wave 110','XR 150L'],
+  'Yamaha':['FZ 150','FZ 250','FZ-S','MT-03','MT-07','R3','R15','NMAX 155','TMAX 560','XTZ 125','XTZ 250','Fazer 250'],
+  'Kawasaki':['Ninja 250','Ninja 400','Ninja 650','Z400','Z650','Z900','Versys 300','KLX 150','KLX 300'],
+  'Suzuki':['GN 125','GS 150','GSX-R 150','GSX-R 600','V-Strom 650','Gixxer 150','Burgman 200'],
+  'KTM':['Duke 200','Duke 390','RC 200','RC 390','Adventure 390','Duke 250'],
+  'Royal Enfield':['Meteor 350','Classic 350','Bullet 350','Himalayan 450','Hunter 350','Thunderbird 350'],
+  'Italika':['FT 125','FT 150','DS 150','GS 150','CS 125','WS 150','Argos 150','Strada 200'],
+  'Carabela':['Goliath 150','Speeder 150','RT 200','Defiant 250'],
+  'Nissan':['Versa','Sentra','Tiida','Altima','Maxima','Frontier','NP300','Kicks','X-Trail','Pathfinder','Murano','Armada','March','Note','Leaf'],
+  'Toyota':['Corolla','Camry','Yaris','Avanza','Hilux','Tacoma','RAV4','Fortuner','Land Cruiser','4Runner','Prius','C-HR','Sienna'],
+  'Chevrolet':['Aveo','Spark','Sonic','Cruze','Malibu','Camaro','Trax','Equinox','Captiva','Traverse','Silverado','Colorado','Tahoe','Suburban','Express'],
+  'Ford':['Fiesta','Focus','Fusion','Mustang','EcoSport','Escape','Edge','Explorer','Expedition','Ranger','F-150','F-250','Transit','Maverick'],
+  'Volkswagen':['Vento','Jetta','Golf','Polo','Tiguan','Taos','T-Cross','Amarok','Transporter','Crafter'],
+  'Dodge':['Attitude','Neon','Charger','Challenger','Durango','Journey','RAM 700','RAM 1500','RAM 2500'],
+  'Hyundai':['Accent','Elantra','Sonata','Tucson','Santa Fe','Creta','i10','Grand i10','Ioniq'],
+  'Kia':['Rio','Forte','Optima','Sportage','Sorento','Carnival','Stinger','EV6','Soluto'],
+  'Mazda':['Mazda 2','Mazda 3','Mazda 6','CX-3','CX-30','CX-5','CX-50','CX-9','BT-50'],
+  'Honda':['Civic','Accord','City','Fit','HR-V','CR-V','Pilot','Odyssey','Ridgeline','CB 150F','CB 190R','PCX 150'],
+  'BMW':['Serie 1','Serie 2','Serie 3','Serie 4','Serie 5','X1','X2','X3','X5','R 1250 GS','F 750 GS','G 310 R'],
+  'Mercedes-Benz':['Clase A','Clase B','Clase C','Clase E','GLA','GLB','GLC','GLE','Sprinter','Vito'],
+  'Audi':['A1','A3','A4','A5','A6','Q3','Q5','Q7','TT','RS3'],
+  'RAM':['700','1500','2500','3500','ProMaster'],
+  'Jeep':['Renegade','Compass','Cherokee','Grand Cherokee','Wrangler','Gladiator'],
+  'Harley-Davidson':['Sportster 883','Sportster 1200','Street 500','Street 750','Iron 883','Fat Boy','Road King','Street Glide','Softail'],
+  'Ducati':['Monster 797','Monster 1200','Panigale V2','Panigale V4','Scrambler','Multistrada'],
+};
+
+// ── SUBCATEGORÍAS ──────────────────────────────────────
+function updateSubcat(){
+  const cat=document.getElementById('categoria').value;
+  const sub=document.getElementById('subcategoria');
+  sub.innerHTML='<option value="">-- Seleccionar --</option>';
+  (SUBCATS[cat]||[]).forEach(s=>{const o=document.createElement('option');o.textContent=s;sub.appendChild(o);});
+}
+
+// ── AUTOCOMPLETE GENÉRICO ──────────────────────────────
+function acFilter(inId,listId,data){
+  const val=document.getElementById(inId).value.toLowerCase();
+  const list=document.getElementById(listId);
+  if(!val){list.classList.remove('show');return;}
+  const hits=data.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
+  if(!hits.length){list.classList.remove('show');return;}
+  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('${inId}','${listId}',this)">${m}</div>`).join('');
+  list.classList.add('show');
+}
+function acPick(inId,listId,el){
+  document.getElementById(inId).value=el.textContent;
+  document.getElementById(listId).classList.remove('show');
+  if(inId==='marca')updateSubmarcaList();
+}
+document.addEventListener('click',e=>{
+  document.querySelectorAll('.autocomplete-list').forEach(l=>{
+    const inp=l.previousElementSibling;
+    if(inp&&!inp.contains(e.target))l.classList.remove('show');
+  });
+});
+
+// ── SUBMARCA AUTOCOMPLETE ──────────────────────────────
+function onMarcaInput(){
+  acFilter('marca','ac_marca',MARCAS);
+  updateSubmarcaList();
+}
+function updateSubmarcaList(){
+  const marca=document.getElementById('marca').value.trim();
+  const modelos=SUBMARCAS[marca]||[];
+  const sub=document.getElementById('submarca');
+  if(modelos.length&&sub.value==='')sub.placeholder=modelos[0]+'...';
+}
+function acSubmarca(){
+  const marca=document.getElementById('marca').value.trim();
+  const val=document.getElementById('submarca').value.toLowerCase();
+  const list=document.getElementById('ac_submarca');
+  const base=SUBMARCAS[marca]||[];
+  // Si hay lista de la marca, filtrar de ella; si no, buscar en todos
+  const pool=base.length?base:Object.values(SUBMARCAS).flat();
+  const hits=pool.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
+  if(!hits.length||!val){list.classList.remove('show');return;}
+  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('submarca','ac_submarca',this)">${m}</div>`).join('');
+  list.classList.add('show');
+}
+
+// ── DIRECCIÓN ──────────────────────────────────────────
+function buildAddr(){
+  const c=v('addr_calle'),x=v('addr_cruce'),col=v('addr_colonia'),cp=v('addr_cp'),mun=v('addr_municipio');
+  let p=[];
+  if(c&&x)p.push(`${c} cruce con ${x}`);
+  else if(c)p.push(c);
+  if(col)p.push(col);
+  if(cp&&mun)p.push(`${cp} ${mun}`);
+  else if(mun)p.push(mun);
+  p.push('N.L.');
+  document.getElementById('addr-preview').textContent=p.length>1?p.join(', '):'La dirección aparecerá aquí...';
+}
+function onAddrTexto(){
+  const val=document.getElementById('addr_texto').value.trim();
+  if(val)document.getElementById('addr-preview').textContent='';
+}
+function getAddr(){
+  const directo=document.getElementById('addr_texto').value.trim();
+  if(directo)return directo;
+  const p=document.getElementById('addr-preview').textContent;
+  return p==='La dirección aparecerá aquí...'?'':p;
+}
+
+// ── GEOLOCALIZACIÓN ────────────────────────────────────
+function geoLocate(){
+  const st=document.getElementById('geo-status');
+  st.style.display='block';
+  st.textContent='📍 Obteniendo ubicación...';
+  if(!navigator.geolocation){st.textContent='❌ GPS no disponible en este dispositivo.';return;}
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const{latitude:lat,longitude:lon}=pos.coords;
+    st.textContent='🌐 Buscando dirección...';
+    try{
+      const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
+      const d=await r.json();
+      const a=d.address||{};
+      const calle=a.road||a.pedestrian||a.footway||'';
+      const colonia=a.suburb||a.neighbourhood||a.quarter||a.city_district||'';
+      const cp=a.postcode||'';
+      const mun=a.city||a.town||a.municipality||'';
+      if(calle)document.getElementById('addr_calle').value=calle;
+      if(colonia)document.getElementById('addr_colonia').value=colonia;
+      if(cp)document.getElementById('addr_cp').value=cp;
+      if(mun)document.getElementById('addr_municipio').value=mun;
+      buildAddr();
+      st.textContent='✅ Ubicación obtenida — puedes editar los campos';
+      setTimeout(()=>st.style.display='none',4000);
+    }catch(e){st.textContent='❌ Sin internet para convertir coordenadas.';}
+  },err=>{
+    st.textContent='❌ No se pudo obtener ubicación. Verifica permisos GPS.';
+  },{enableHighAccuracy:true,timeout:10000});
+}
+
+// ── FECHA NACIMIENTO MANUAL ────────────────────────────
+function fmtNacInput(el){
+  let val=el.value.replace(/\D/g,'');
+  if(val.length>2)val=val.slice(0,2)+'/'+val.slice(2);
+  if(val.length>5)val=val.slice(0,5)+'/'+val.slice(5);
+  el.value=val.slice(0,10);
+}
+
+// ── EDAD ───────────────────────────────────────────────
+function calcEdad(){
+  const raw=v('nacimiento');
+  if(!raw||raw.length<10)return;
+  const parts=raw.split('/');
+  if(parts.length!==3)return;
+  const[d,m,y]=parts;
+  if(!d||!m||!y||y.length!==4)return;
+  const nac=new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);
+  if(isNaN(nac))return;
+  const hoy=new Date();
+  let e=hoy.getFullYear()-nac.getFullYear();
+  if(hoy.getMonth()-nac.getMonth()<0||(hoy.getMonth()===nac.getMonth()&&hoy.getDate()<nac.getDate()))e--;
+  document.getElementById('edad').value=e;
+}
+
+// ── LIMPIAR POR SECCIÓN ────────────────────────────────
+function limpiarSeccion(sec){
+  const maps={
+    servicio:['zona','ne','nombre_pol','addr_calle','addr_cruce','addr_colonia','addr_cp','addr_municipio','addr_texto','folio','crp','bodycam','motivo'],
+    persona:['nombre','nacimiento','edad','estatura','telefono','alias','redes','domicilio','estado_origen','oficio','padre','madre','antecedentes','grupo','rol','adicionales'],
+    tatuajes:['tatuajes_cant','tatuajes_area','tatuajes_desc','tatuajes_bloque'],
+    vehiculo:['marca','submarca','modelo','anio','color','placas','estado_placas','serie','motor','niv','observaciones']
+  };
+  const selects={
+    servicio:['categoria','subcategoria'],
+    persona:['vulnerable','sexo','estado_civil','escolaridad'],
+    tatuajes:[],
+    vehiculo:['tipo_vehiculo','documentacion']
+  };
+  (maps[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el){el.value=id==='tatuajes_cant'?'0':'';el.classList.remove('filled');}});
+  (selects[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
+  if(sec==='servicio'){
+    document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
+    document.getElementById('addr_estado').value='N.L.';
+    initDT();
+  }
+}
+
+// ── PARSEAR BLOQUE TATUAJES ───────────────────────────
+function parseTatuajesBloque(){
+  const raw=document.getElementById('tatuajes_bloque').value;
+  if(!raw.trim())return;
+  const cantM=raw.match(/cantidad\s+de\s+tatuajes\s*:\s*(\d+)/i);
+  if(cantM)document.getElementById('tatuajes_cant').value=cantM[1];
+  const areaM=raw.match(/[aá]rea\s+del?\s+cuerpo\s*:\s*(.+)/i);
+  if(areaM)document.getElementById('tatuajes_area').value=areaM[1].trim();
+  const descM=raw.match(/descripci[oó]n\s+de\s+los\s+tatuajes\s*:\s*([\s\S]*)/i);
+  if(descM)document.getElementById('tatuajes_desc').value=descM[1].trim();
+}
+
+// ── PEGAR CÓDIGO — PROCESAR ────────────────────────────
+function fill(id,val){
+  if(!val)return;
+  const el=document.getElementById(id);
+  if(el){el.value=val;el.classList.add('filled');}
+}
+
+function procBarcode(text,mode){
+  const status=document.getElementById('scan-status');
+  const parts=text.split('|');
+  if(mode==='ine'){
+    if(parts.length>=7){
+      fill('nombre',[parts[0],parts[1],parts[2]].filter(Boolean).join(' '));
+      const d=parts[3],m=parts[4],y=parts[5];
+      if(d&&m&&y&&y.length===4)fill('nacimiento',`${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`);
+      calcEdad();
+      const sx=parts[6];
+      if(sx==='H')document.getElementById('sexo').value='Masculino';
+      else if(sx==='M')document.getElementById('sexo').value='Femenino';
+      if(parts[7]){
+        let dom=parts[7];
+        if(parts[8])dom+=' '+parts[8];
+        if(parts[9])dom+=', '+parts[9];
+        if(parts[10])dom+=', C.P. '+parts[10];
+        if(parts[11])dom+=', '+parts[11];
+        if(parts[12])dom+=', '+parts[12];
+        fill('domicilio',dom);
+        if(parts[12]){const em=ESTADOS.find(e=>e.toUpperCase().includes(parts[12].toUpperCase()));if(em)fill('estado_origen',em);}
+      }
+      status.textContent='✅ INE leído — campos verdes auto-completados';
+    } else {
+      const curp=text.match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}/);
+      status.textContent=curp?`✅ Detectado: ${curp[0]}`:'⚠️ Código leído pero incompleto. Verifica manualmente.';
+    }
+  } else {
+    const up=text.toUpperCase();
+    const serie=up.match(/\b[A-HJ-NPR-Z0-9]{17}\b/);
+    if(serie)fill('serie',serie[0]);
+    const placa=up.match(/\b([A-Z]{2,3}\d{3,4}|\d{2,3}[A-Z]{2,3}\d{0,2})\b/);
+    if(placa)fill('placas',placa[0].replace(/[-\s]/g,''));
+    const yr=text.match(/\b(19[7-9]\d|20[0-2]\d)\b/);
+    if(yr)fill('anio',yr[0]);
+    for(const m of MARCAS){if(up.includes(m.toUpperCase())){fill('marca',m);updateSubmarcaList();break;}}
+    for(const e of ESTADOS){if(up.includes(e.toUpperCase())){fill('estado_placas',e);break;}}
+    status.textContent='✅ Tarjeta leída — campos verdes auto-completados';
+  }
+}
+
+// ── TOGGLE PASTE BARCODE ───────────────────────────────
+function togglePaste(mode){
+  const ine=document.getElementById('paste-ine');
+  const circ=document.getElementById('paste-circ');
+  if(mode==='ine'){ine.style.display=ine.style.display==='none'?'block':'none';circ.style.display='none';}
+  else{circ.style.display=circ.style.display==='none'?'block':'none';ine.style.display='none';}
+}
+function processPaste(mode){
+  const text=mode==='ine'?document.getElementById('paste-ine-text').value:document.getElementById('paste-circ-text').value;
+  if(!text.trim()){document.getElementById('scan-status').textContent='⚠️ El campo está vacío.';return;}
+  procBarcode(text.trim(),mode==='ine'?'ine':'circ');
+  document.getElementById('paste-ine').style.display='none';
+  document.getElementById('paste-circ').style.display='none';
+}
+function stopScan(){}
+
+// ── HELPERS ────────────────────────────────────────────
+function v(id){return document.getElementById(id).value.trim();}
+function np(id){return v(id)||'No proporciona';}
+function na(id){return v(id)||'N/A';}
+function fmtF(val){if(!val)return'';const[y,m,d]=val.split('-');return`${d}/${m}/${y}`;}
+
+// ── GENERAR ────────────────────────────────────────────
+function generar(){
+  const txt=
+`*#${v('num_emp')||'___'} FUERZA CIVIL*
+*EMPADRONAMIENTO*
+
+*Zona de responsabilidad:* ${v('zona')}
+
+*CATEGORIA:* ${v('categoria')}
+*SUBCATEGORIA:* ${v('subcategoria')}
+
+*Nombre:* ${v('nombre_pol')}
+*N.E:* ${v('ne')}
+
+*Lugar de los Hechos:*
+${getAddr()}
+
+*Fecha:* ${fmtF(v('fecha'))}
+*Hora:* ${v('hora')} horas
+
+*Folio C5:* ${v('folio')}
+*CRP:* ${v('crp')}
+*Número de BODYCAM:* ${v('bodycam')}
+*Motivo del empadronamiento:* ${v('motivo')}
+
+*PERSONA*
+
+*Pertenece a sector vulnerable:* ${v('vulnerable')}
+*Nombre completo:* ${np('nombre')}
+*Fecha de Nacimiento:* ${np('nacimiento')}
+*Edad:* ${np('edad')}
+*Estatura:* ${v('estatura')?v('estatura')+' metros':'No proporciona'}
+*Sexo:* ${v('sexo')}
+*Teléfono:* ${np('telefono')}
+*Alias:* ${np('alias')}
+*Redes Sociales:* ${np('redes')}
+*Domicilio:* ${np('domicilio')}
+*Estado de origen:* ${np('estado_origen')}
+*Estado civil:* ${v('estado_civil')}
+*Escolaridad:* ${v('escolaridad')}
+*Oficio/Profesión:* ${np('oficio')}
+*Datos del Padre:* ${np('padre')}
+*Datos de la Madre:* ${np('madre')}
+*Antecedentes Criminales:* ${na('antecedentes')}
+*Grupo criminal:* ${na('grupo')}
+*Rol criminal:* ${na('rol')}
+
+*Datos adicionales:*
+${v('adicionales')}
+
+*TATUAJES*
+
+*Cantidad de tatuajes:* ${v('tatuajes_cant')}
+*En qué área del cuerpo:* ${v('tatuajes_area')}
+*Descripción de los tatuajes:* ${v('tatuajes_desc')}
+
+*VEHÍCULO*
+
+*Tipo de vehículo:* ${v('tipo_vehiculo')}
+*Marca:* ${v('marca')}
+*Sub marca:* ${v('submarca')}
+*Modelo:* ${v('modelo')}
+*Año:* ${v('anio')}
+*Color:* ${v('color')}
+*Placas:* ${v('placas')}
+*Estado de Placas:* ${v('estado_placas')}
+*Vehículo con documentación completa:* ${v('documentacion')}
+*Número de Serie:* ${v('serie')}
+*Número de motor:* ${v('motor')}
+*NIV:* ${v('niv')}
+
+*Detallado/Observaciones:*
+${v('observaciones')}`;
+
+  const ta=document.getElementById('output-text');
+  ta.value=txt;
+  const box=document.getElementById('output-box');
+  box.style.display='block';
+  ta.style.height='auto';
+  ta.style.height=ta.scrollHeight+'px';
+  box.scrollIntoView({behavior:'smooth'});
+}
+
+// ── COPIAR ─────────────────────────────────────────────
+function copiar(){
+  const ta=document.getElementById('output-text');
+  const btn=document.getElementById('btn-copy');
+  const ok=()=>{btn.textContent='✅ Copiado';btn.classList.add('copied');setTimeout(()=>{btn.textContent='📋 Copiar';btn.classList.remove('copied');},2500);};
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(ta.value).then(ok).catch(fallback);
+  }else{fallback();}
+  function fallback(){
+    ta.removeAttribute('readonly');ta.select();ta.setSelectionRange(0,99999);
+    const ok2=document.execCommand('copy');
+    ta.setAttribute('readonly','');window.getSelection()?.removeAllRanges();
+    if(ok2)ok();else alert('Selecciona el texto manualmente y copia con Ctrl+C / mantén presionado.');
+  }
+}
+
+// ── LIMPIAR TODO ───────────────────────────────────────
+function limpiar(){
+  if(!confirm('¿Limpiar todos los campos?'))return;
+  document.querySelectorAll('input,textarea').forEach(el=>{el.value='';el.classList.remove('filled');});
+  document.querySelectorAll('select').forEach(el=>el.selectedIndex=0);
+  document.getElementById('output-box').style.display='none';
+  document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
+  document.getElementById('addr_estado').value='N.L.';
+  document.getElementById('tatuajes_cant').value='0';
+  stopScan();
+  initDT();
+}
+function initDT(){
+  const n=new Date();
+  document.getElementById('fecha').value=n.toISOString().split('T')[0];
+  document.getElementById('hora').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  document.getElementById('addr_estado').value='N.L.';
+}
+window.onload=initDT;
+</script>
+</body>
+</html>
