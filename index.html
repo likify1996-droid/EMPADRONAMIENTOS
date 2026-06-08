@@ -479,37 +479,28 @@ function geoLocate(){
     const{latitude:lat,longitude:lon}=pos.coords;
     st.textContent='🌐 Buscando dirección...';
     try{
-      // Consulta principal
       const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
       const d=await r.json();
       const a=d.address||{};
-      const calle=a.road||a.pedestrian||a.footway||a.street||'';
-      const colonia=a.suburb||a.neighbourhood||a.quarter||a.city_district||'';
+      const calle=a.road||a.pedestrian||a.footway||a.street||a.path||'';
+      const colonia=a.suburb||a.neighbourhood||a.quarter||a.residential||a.city_district||a.hamlet||a.village||'';
       const cp=a.postcode||'';
-      const mun=a.city||a.town||a.municipality||'';
-
+      const mun=a.city||a.town||a.municipality||a.county||'';
       if(calle)document.getElementById('addr_calle').value=calle;
       if(colonia)document.getElementById('addr_colonia').value=colonia;
       if(cp)document.getElementById('addr_cp').value=cp;
       if(mun)document.getElementById('addr_municipio').value=mun;
-
-      // Buscar calle cruce más cercana — offset pequeño para obtener intersección
       try{
         const offset=0.0002;
         const r2=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat+offset}&lon=${lon+offset}&format=json&accept-language=es`);
         const d2=await r2.json();
-        const calle2=d2.address?.road||d2.address?.pedestrian||'';
-        if(calle2&&calle2!==calle){
-          document.getElementById('addr_cruce').value=calle2;
-        }
+        const calle2=d2.address?.road||d2.address?.pedestrian||d2.address?.footway||'';
+        if(calle2&&calle2!==calle)document.getElementById('addr_cruce').value=calle2;
       }catch(e){}
-
       buildAddr();
       st.textContent='✅ Ubicación obtenida — edita si es necesario';
       setTimeout(()=>st.style.display='none',4000);
-    }catch(e){
-      st.textContent='❌ Sin internet para convertir coordenadas.';
-    }
+    }catch(e){st.textContent='❌ Sin internet para convertir coordenadas.';}
   },()=>{
     st.textContent='❌ No se pudo obtener ubicación. Verifica permisos GPS.';
   },{enableHighAccuracy:true,timeout:10000});
@@ -546,48 +537,52 @@ async function captureOCR(){
   canvas.height=video.videoHeight;
   canvas.getContext('2d').drawImage(video,0,0);
   stopOCR();
-  status.textContent='🔍 Analizando imagen con IA...';
+  status.textContent='🔍 Procesando imagen...';
   try{
     const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.85));
-    const base64=await new Promise(res=>{
-      const r=new FileReader();
-      r.onload=()=>res(r.result.split(',')[1]);
-      r.readAsDataURL(blob);
-    });
-    const response=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1000,
-        messages:[{
-          role:'user',
-          content:[
-            {type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64}},
-            {type:'text',text:`Extrae los datos de este documento mexicano (INE, licencia o tarjeta de circulación) y responde SOLO con JSON sin markdown:
-{"nombre":"","fecha_nac":"DD/MM/AAAA","sexo":"Masculino o Femenino","domicilio":"","estado":"","placas":"","serie":"","marca":"","modelo":"","anio":"","tipo":"ine o circulacion"}`}
-          ]
-        }]
-      })
-    });
-    const data=await response.json();
-    const txt=data.content?.[0]?.text||'{}';
-    const obj=JSON.parse(txt.replace(/```json|```/g,'').trim());
-    if(obj.nombre)fill('nombre',obj.nombre);
-    if(obj.fecha_nac)fill('nacimiento',obj.fecha_nac);
-    if(obj.sexo)document.getElementById('sexo').value=obj.sexo;
-    if(obj.domicilio)fill('domicilio',obj.domicilio);
-    if(obj.estado){const em=ESTADOS.find(e=>e.toLowerCase().includes(obj.estado.toLowerCase()));if(em)fill('estado_origen',em);}
-    if(obj.placas)fill('placas',obj.placas.toUpperCase());
-    if(obj.serie)fill('serie',obj.serie.toUpperCase());
-    if(obj.marca)fill('marca',obj.marca);
-    if(obj.modelo)fill('submarca',obj.modelo);
-    if(obj.anio)fill('anio',obj.anio);
-    calcEdad();
-    status.textContent='✅ Datos extraídos — revisa los campos verdes';
+    const formData=new FormData();
+    formData.append('file',blob,'doc.jpg');
+    formData.append('apikey','K82725686988957');
+    formData.append('language','spa');
+    formData.append('isOverlayRequired','false');
+    formData.append('detectOrientation','true');
+    formData.append('scale','true');
+    formData.append('OCREngine','2');
+    const resp=await fetch('https://api.ocr.space/parse/image',{method:'POST',body:formData});
+    const data=await resp.json();
+    if(!data.ParsedResults||!data.ParsedResults[0]){
+      status.textContent='❌ No se pudo leer. Intenta con mejor iluminación.';return;
+    }
+    const text=data.ParsedResults[0].ParsedText||'';
+    parseOCRText(text);
+    status.textContent='✅ Documento leído — revisa los campos verdes';
   }catch(e){
-    status.textContent='❌ Error al procesar imagen. Intenta de nuevo.';
+    status.textContent='❌ Error de conexión. Verifica internet e intenta de nuevo.';
   }
+}
+
+function parseOCRText(text){
+  const lines=text.split(/\n|\r/).map(l=>l.trim()).filter(Boolean);
+  const upper=text.toUpperCase();
+  for(const line of lines){
+    if(/^[A-ZÁÉÍÓÚÑ]{2,}(\s[A-ZÁÉÍÓÚÑ]{2,}){2,}$/.test(line)){
+      if(!document.getElementById('nombre').value){fill('nombre',line);break;}
+    }
+  }
+  const fechaM=text.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+  if(fechaM&&!document.getElementById('nacimiento').value){
+    fill('nacimiento',`${fechaM[1]}/${fechaM[2]}/${fechaM[3]}`);calcEdad();
+  }
+  if(upper.includes('MASCULINO')||/ H /.test(upper))document.getElementById('sexo').value='Masculino';
+  else if(upper.includes('FEMENINO')||/ M /.test(upper))document.getElementById('sexo').value='Femenino';
+  const placasM=upper.match(/\b([A-Z]{2,3}[-\s]?\d{3,4}|\d{2,3}[-\s]?[A-Z]{2,3}\d{0,2})\b/);
+  if(placasM&&!document.getElementById('placas').value)fill('placas',placasM[0].replace(/[\s-]/g,''));
+  const serieM=upper.match(/\b[A-HJ-NPR-Z0-9]{17}\b/);
+  if(serieM&&!document.getElementById('serie').value)fill('serie',serieM[0]);
+  const anioM=text.match(/\b(19[7-9]\d|20[0-2]\d)\b/);
+  if(anioM&&!document.getElementById('anio').value)fill('anio',anioM[0]);
+  for(const edo of ESTADOS){if(upper.includes(edo.toUpperCase())&&!document.getElementById('estado_origen').value){fill('estado_origen',edo);break;}}
+  for(const m of MARCAS){if(upper.includes(m.toUpperCase())&&!document.getElementById('marca').value){fill('marca',m);updateSubmarcaList();break;}}
 }
 
 // ── NUEVO EMPADRONAMIENTO ──────────────────────────────
