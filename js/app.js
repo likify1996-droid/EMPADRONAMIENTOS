@@ -649,6 +649,8 @@ async function callGroqWithRetry(base64,maxAttempts){
         i--;
         continue;
       }
+      // La API key de Groq mal configurada falla igual con cualquier modelo
+      if(e.configError)throw e;
       // Si es error de conexión (no de modelo), reintentar el mismo modelo una vez más antes de cambiar
       if(e.message.includes('Sin conexión')||e.message.includes('Tiempo agotado')){
         try{
@@ -718,9 +720,16 @@ Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin come
       const err=await resp.json();
       errMsg=err.error?.message||errMsg;
     }catch(e){}
-    if(resp.status===401){
+    // 401 del propio Worker = falta la clave de acceso. Cualquier otro 401
+    // viene de Groq: la API key guardada en Cloudflare no sirve.
+    if(resp.status===401&&/clave de acceso/i.test(errMsg)){
       const err=new Error(errMsg);
       err.authError=true;err.teniaClave=!!getOcrToken();
+      throw err;
+    }
+    if(resp.status===401||/invalid api key/i.test(errMsg)){
+      const err=new Error('La API key de Groq guardada en Cloudflare no es válida o falta (secreto GROQ_API_KEY del Worker)');
+      err.configError=true;
       throw err;
     }
     throw new Error(errMsg);
