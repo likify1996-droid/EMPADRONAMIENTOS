@@ -10,7 +10,7 @@ window.addEventListener('unhandledrejection',function(ev){
 
 // Versión de la app: súbela junto con CACHE en sw.js en cada cambio publicado.
 // Se muestra al pie de la página para saber qué versión tiene cada teléfono.
-const APP_VERSION='19';
+const APP_VERSION='20';
 
 // ── EVENTOS DE LA INTERFAZ ─────────────────────────────
 // El HTML no lleva onclick/oninput: cada elemento declara la función que usa
@@ -1309,7 +1309,8 @@ function parseTatuajesBloque(){
 function toTitleCase(str){
   if(!str)return str;
   const lowers=['de','del','la','las','los','y','e','en','a','al'];
-  return str.toLowerCase().replace(/\b\w+/g,(word,idx)=>{
+  // \p{L}: cualquier letra, con o sin acento (con \w, "SÁNCHEZ" quedaba "SáNchez")
+  return str.toLowerCase().replace(/[\p{L}\p{M}]+/gu,(word,idx)=>{
     if(idx>0&&lowers.includes(word))return word;
     return word.charAt(0).toUpperCase()+word.slice(1);
   });
@@ -1364,12 +1365,14 @@ function validar(){
     {id:'ne',label:'N.E (Número de Empleado)'},
     {id:'nombre',label:'Nombre completo de la persona'},
     {id:'categoria',label:'Categoría'},
+    {id:'subcategoria',label:'Subcategoría'},
     {id:'nacimiento',label:'Fecha de Nacimiento'},
     {id:'edad',label:'Edad'},
     {id:'domicilio',label:'Domicilio de la persona'},
     {id:'oficio',label:'Oficio / Profesión'},
     {id:'motivo',label:'Motivo del empadronamiento'},
   ];
+  if(v('subcategoria')==='Otro')reqs.push({id:'otro_subcat',label:'Especificar subcategoría'});
   // Validar lugar de los hechos (campos o texto directo)
   const addrPreview=document.getElementById('addr-preview').textContent;
   const addrTexto=document.getElementById('addr_texto').value.trim();
@@ -2325,7 +2328,8 @@ function validateField(id){
 }
 
 function checkGenerateReady(){
-  const reqs=['nombre_pol','zona','ne','nombre','categoria','nacimiento','edad','domicilio','oficio','motivo'];
+  const reqs=['nombre_pol','zona','ne','nombre','categoria','subcategoria','nacimiento','edad','domicilio','oficio','motivo'];
+  if(v('subcategoria')==='Otro')reqs.push('otro_subcat');
   reqs.forEach(validateField);
   const allFilled=reqs.every(id=>{const el=document.getElementById(id);return el&&el.value.trim();});
   const addrOk=document.getElementById('addr_texto').value.trim()||(document.getElementById('addr_calle').value.trim()&&document.getElementById('addr_cruce').value.trim());
@@ -2495,7 +2499,7 @@ const DRAFT_KEY='fc_draft_v1';          // formato anterior (solo para migrar)
 const TABS_KEY='fc_tabs_v1';
 const DRAFT_MAX_AGE_MS=12*60*60*1000;   // 12 horas
 const MAX_TABS=5;
-const TAB_REQ=['nombre_pol','zona','ne','nombre','categoria','nacimiento','edad','domicilio','oficio','motivo'];
+const TAB_REQ=['nombre_pol','zona','ne','nombre','categoria','subcategoria','nacimiento','edad','domicilio','oficio','motivo'];
 const TAB_PERSON=['nombre','nacimiento','edad','domicilio','oficio','curp','placas','marca'];
 const TAB_POLICE=['zona','ne','nombre_pol','crp','bodycam'];
 const TAB_SERVICE=['folio','addr_calle','addr_cruce','addr_colonia','addr_cp','addr_municipio','addr_texto','motivo','otro_subcat'];
@@ -2508,7 +2512,7 @@ function saveInheritPref(cb){try{localStorage.setItem(TAB_INHERIT_KEY,cb.checked
 
 // Lectura de un valor dentro de un snapshot de formulario
 function tabGet(form,id){
-  if(id==='categoria')return form['sel_categoria']>0?'x':'';
+  if(id==='categoria'||id==='subcategoria')return form['sel_'+id]>0?'x':'';
   const val=form[id];
   return val==null?'':String(val).trim();
 }
@@ -2877,13 +2881,14 @@ function syncMotivoUI(){
   if(!sel||!inp)return;
   const val=inp.value.trim();
   if(!val){sel.value='';inp.style.display='none';return;}
-  if(MOTIVOS.includes(val)){sel.value=val;inp.style.display='none';}
+  if(MOTIVOS.some(m=>m.texto===val)){sel.value=val;inp.style.display='none';}
   else{sel.value='__otro';inp.style.display='block';}
 }
 function motivoSelChange(){
   const sel=document.getElementById('motivo_sel'),inp=document.getElementById('motivo');
   if(sel.value==='__otro'){inp.value='';inp.style.display='block';inp.focus();}
   else{inp.value=sel.value;inp.style.display='none';}
+  if(/^Sospecha razonable/.test(sel.value))showToast('📝 Anota en Datos adicionales qué hechos concretos observaste',4500);
   inp.dispatchEvent(new Event('input',{bubbles:true}));
 }
 
@@ -2920,7 +2925,16 @@ document.addEventListener('focusin',e=>{
   if(sec)sec.classList.add('active-section');
 });
 
+function renderMotivos(){
+  const sel=document.getElementById('motivo_sel');
+  sel.innerHTML='';
+  const add=(value,text,title)=>{const o=document.createElement('option');o.value=value;o.textContent=text;if(title)o.title=title;sel.appendChild(o);};
+  add('','-- Seleccionar --');
+  MOTIVOS.forEach(m=>add(m.texto,m.texto,m.fundamento));
+  add('__otro','Otro (especificar)…');
+}
 window.onload=()=>{
+  renderMotivos();
   document.getElementById('app-version').textContent='Versión '+APP_VERSION;
   renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();
