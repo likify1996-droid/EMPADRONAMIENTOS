@@ -654,6 +654,9 @@ function fillOCRFields(obj,opts){
   document.getElementById('btn-releer').style.display='inline-flex';
   status.textContent='✅ Listo — revisa los campos verdes';
   // Multi-captura: ofrecer escanear otro documento
+  // Lo que leyó la IA puede venir mal (un 0 por O, un dígito de menos)
+  const porRevisar=revisarTodo();
+  if(porRevisar.length)summary.textContent+=` — ⚠️ revisa: ${porRevisar.map(x=>ETIQUETAS_REVISION[x.id]).join(', ')}`;
   if(!(opts&&opts.sinPreguntar))preguntarOtraCaptura();
 }
 

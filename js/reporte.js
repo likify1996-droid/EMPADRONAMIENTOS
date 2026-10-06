@@ -81,7 +81,7 @@ ${v('observaciones')}`;
 }
 
 function generar(){
-  if(!validar())return;
+  if(!validar()||!confirmarRevisiones())return;
   // Actualizar hora al momento exacto de generar
   const now=new Date();
   const hh=String(now.getHours()).padStart(2,'0');
@@ -142,7 +142,7 @@ function updateBtnAgregarLoteLabel(){
 }
 
 function agregarAlLote(){
-  if(!validar())return;
+  if(!validar()||!confirmarRevisiones())return;
   const now=new Date();
   const hh=String(now.getHours()).padStart(2,'0');
   const mm=String(now.getMinutes()).padStart(2,'0');

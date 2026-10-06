@@ -55,7 +55,7 @@ function resetFormFields(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();revisarTodo();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   const cs=document.getElementById('curp-status');if(cs)cs.textContent='';
   ['domicilio-suggestions','lugar-suggestions'].forEach(id=>{const s=document.getElementById(id);if(s)s.style.display='none';});

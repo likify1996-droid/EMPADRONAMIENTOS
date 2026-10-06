@@ -37,7 +37,7 @@ function nuevoEmpadronamiento(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();revisarTodo();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
 
   // Restaurar datos del policía si eligió conservar
@@ -139,6 +139,7 @@ function limpiarSeccion(sec){
     document.getElementById('addr_estado').value='N.L.';
     initDT();
   }
+  revisarTodo();
 }
 
 // ── PARSEAR BLOQUE TATUAJES ───────────────────────────
@@ -364,7 +365,7 @@ function limpiar(){
   document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
   document.getElementById('addr_estado').value='N.L.';
   document.getElementById('tatuajes_cant').value='0';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();revisarTodo();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   stopScan();
   initDT();
@@ -578,6 +579,7 @@ function restoreForm(data){
   syncMotivoUI();
   buildAddr();
   programarRefresco();
+  revisarTodo();
 }
 function ofrecerDeshacer(){
   const t=document.getElementById('toast');
@@ -627,3 +629,55 @@ function renderMotivos(){
   MOTIVOS.forEach(m=>add(m.texto,m.texto,m.fundamento));
   add('__otro','Otro (especificar)…');
 }
+
+// ── REVISIÓN DE DATOS (avisos en naranja) ──────────────
+// Las reglas están en js/revisiones.js. Se revisa al salir del campo, al
+// llenar con el OCR y al cambiar de pestaña; al generar se avisa si queda
+// algo por revisar, pero se puede continuar.
+const CAMPOS_REVISION={
+  serie:()=>revisarNIV(v('serie')),
+  niv:()=>revisarNIV(v('niv')),
+  placas:()=>revisarPlacas(v('placas')),
+  telefono:()=>revisarTelefono(v('telefono')),
+  nacimiento:()=>revisarNacimiento(v('nacimiento')),
+  edad:()=>revisarEdad(v('edad'),v('nacimiento')),
+};
+const ETIQUETAS_REVISION={serie:'Número de serie',niv:'NIV',placas:'Placas',telefono:'Teléfono',nacimiento:'Fecha de nacimiento',edad:'Edad'};
+function marcarRevision(id,msg){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.toggle('campo-revisar',!!msg);
+  let av=document.getElementById('rev-'+id);
+  if(msg&&!av){
+    av=document.createElement('div');
+    av.id='rev-'+id;av.className='aviso-revisar';
+    el.insertAdjacentElement('afterend',av);
+  }
+  if(av){av.textContent=msg?'⚠️ '+msg:'';av.style.display=msg?'block':'none';}
+}
+function revisarCampo(id){
+  const f=CAMPOS_REVISION[id];
+  if(!f)return'';
+  const msg=f();
+  marcarRevision(id,msg);
+  return msg;
+}
+function revisarTodo(){
+  return Object.keys(CAMPOS_REVISION).map(id=>({id,msg:revisarCampo(id)})).filter(x=>x.msg);
+}
+function confirmarRevisiones(){
+  const p=revisarTodo();
+  if(!p.length)return true;
+  return confirm('Hay datos por revisar:\n\n'+p.map(x=>`• ${ETIQUETAS_REVISION[x.id]}: ${x.msg}`).join('\n')+'\n\n¿Continuar de todos modos?');
+}
+document.addEventListener('focusout',e=>{
+  const id=e.target&&e.target.id;
+  if(!CAMPOS_REVISION[id])return;
+  revisarCampo(id);
+  if(id==='nacimiento')revisarCampo('edad');
+});
+// Si el campo ya tenía aviso, se quita en cuanto queda bien
+document.addEventListener('input',e=>{
+  const el=e.target;
+  if(el&&CAMPOS_REVISION[el.id]&&el.classList.contains('campo-revisar'))revisarCampo(el.id);
+});
