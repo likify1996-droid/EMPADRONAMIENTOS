@@ -1,8 +1,11 @@
-const CACHE = 'fc-empadronamiento-v16';
+const CACHE = 'fc-empadronamiento-v17';
 const ASSETS = [
   './index.html',
   './manifest.json',
-  './icon-logo.png'
+  './icon-logo.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png'
 ];
 
 // En campo la señal celular suele ser lenta/intermitente. Sin límite de
