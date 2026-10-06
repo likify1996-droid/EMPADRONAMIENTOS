@@ -10,6 +10,7 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
   - Se autoguarda en el teléfono y se borra solo a las 12 horas.
 - **OCR con IA** de INE y tarjeta de circulación (Groq, a través de un Worker de Cloudflare).
   - El CURP se valida y de él se sacan la fecha de nacimiento, el sexo y el estado.
+  - Lee INE, licencias de conducir y pasaportes. El nombre siempre queda como "Apellidos Nombre(s)" (la licencia lo imprime al revés que la INE), comprobado con la CURP, y la licencia se anota en Datos adicionales con su tipo, folio y vigencia.
   - Sin señal, la foto se guarda y se lee después con **▶ Leer ahora**.
 - **Ubicación:** GPS, mapa con pin y búsqueda de direcciones. Usa OpenStreetMap (Nominatim) o, opcionalmente, Google Places con una llave propia.
 - **Catálogo de vehículos:** al elegir o escanear la submarca se llena solo el tipo de vehículo, y también la marca si falta.
@@ -32,6 +33,7 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 | `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía, avisos de revisión y dictado. |
 | `js/vehiculo.js` | Autocompletado de marca y submarca, y tipo automático. |
 | `js/ubicacion.js` | GPS, mapa y búsqueda de direcciones. |
+| `js/documentos.js` | Orden del nombre según el documento (INE, licencia, pasaporte), comprobado con la CURP. |
 | `js/ocr.js` | Cámara, galería, CURP, envío al Worker y fotos pendientes. |
 | `js/reporte.js` | Texto del reporte, lote, copiar, WhatsApp, PDF y vista previa. |
 | `js/pestanas.js` | Pestañas y autoguardado. |

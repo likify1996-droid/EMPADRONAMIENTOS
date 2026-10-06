@@ -1,4 +1,4 @@
-const CACHE = 'fc-empadronamiento-v22';
+const CACHE = 'fc-empadronamiento-v23';
 const ASSETS = [
   './index.html',
   './css/styles.css',
@@ -8,6 +8,7 @@ const ASSETS = [
   './js/formulario.js',
   './js/vehiculo.js',
   './js/ubicacion.js',
+  './js/documentos.js',
   './js/ocr.js',
   './js/reporte.js',
   './js/pestanas.js',

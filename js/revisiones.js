@@ -67,6 +67,7 @@ function revisarNacimiento(fecha,hoy){
   if(e===null)return'La fecha no existe en el calendario (DD/MM/AAAA)';
   if(e<0)return'La fecha de nacimiento es posterior a hoy';
   if(e>110)return`Daría ${e} años: revisa el año`;
+  if(e<12)return`Daría ${e} años: revisa que no sea la fecha de expedición o de vigencia`;
   return'';
 }
 function revisarEdad(edad,fecha,hoy){

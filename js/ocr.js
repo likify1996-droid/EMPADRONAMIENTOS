@@ -356,16 +356,20 @@ async function callGroqWithRetry(base64,maxAttempts){
 async function callGroq(base64,modelName){
   modelName=modelName||'qwen/qwen3.6-27b';
   const status=document.getElementById('scan-status');
-  const prompt=`Eres un sistema OCR especializado en documentos de identidad mexicanos. Analiza la imagen y extrae los datos visibles.
-Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin comentarios:
-{"tipo":"ine o circulacion","nombre":"","curp":"","fecha_nac":"DD/MM/AAAA","sexo":"","domicilio":"","cod_estado":"","num_estado":"","menor":false,"tipo_vehiculo":"","marca":"","submarca":"","anio":"","placas":"","estado_placas":"","serie":"","motor":""}
-- tipo: "ine" si es INE/credencial/licencia, "circulacion" si es tarjeta de circulación
-- nombre: formato "Apellido1 Apellido2 Nombre" en título
-- curp: los 18 caracteres del CURP tal como aparecen impresos, sin espacios (vacío si no es legible)
-- fecha_nac: formato DD/MM/AAAA
-- sexo: "Masculino" o "Femenino"
+  const prompt=`Eres un sistema OCR especializado en documentos mexicanos. Analiza la imagen y extrae SOLO los datos visibles.
+Responde SOLO con este JSON, sin texto adicional, sin markdown, sin comentarios:
+{"tipo":"","nombre_impreso":"","nombres":"","apellido_paterno":"","apellido_materno":"","curp":"","fecha_nac":"","sexo":"","domicilio":"","cod_estado":"","num_estado":"","menor":false,"licencia_tipo":"","licencia_estado":"","licencia_folio":"","licencia_vigencia":"","tipo_vehiculo":"","marca":"","submarca":"","anio":"","placas":"","estado_placas":"","serie":"","motor":""}
+- tipo: "ine" (credencial para votar INE/IFE), "licencia" (licencia de conducir de cualquier estado), "pasaporte", "otro" (otra identificación con datos de una persona) o "circulacion" (tarjeta de circulación de un vehículo)
+- nombre_impreso: el nombre completo copiado en el MISMO orden en que está impreso, de arriba a abajo y de izquierda a derecha
+- nombres, apellido_paterno, apellido_materno: el nombre separado. OJO con el orden: la INE imprime primero los apellidos y después el nombre; las licencias y pasaportes suelen imprimir primero el nombre y después los apellidos. Guíate por las etiquetas (NOMBRE, APELLIDOS) y por la CURP: su 1.ª letra es la inicial del apellido paterno, la 3.ª la del materno y la 4.ª la del nombre
+- curp: los 18 caracteres tal como aparecen impresos, sin espacios ("" si no es legible)
+- fecha_nac: SOLO la fecha de nacimiento, DD/MM/AAAA. NUNCA la fecha de expedición, emisión, vigencia o vencimiento. Si el documento no muestra la fecha de nacimiento: ""
+- sexo: "Masculino" o "Femenino" (solo si aparece)
+- domicilio: tal como aparece, en una sola línea
 - cod_estado: 2 letras del estado en la CURP (ej: NL, JC, DF)
-- menor: true si tiene menos de 18 años
+- menor: true solo si la fecha de nacimiento indica menos de 18 años
+- licencia_tipo: la letra o clase de la licencia (ej: A, B, C, D, E, M). licencia_estado: estado que la expide. licencia_folio: folio o número de la licencia. licencia_vigencia: fecha de vencimiento DD/MM/AAAA ("Permanente" si así dice)
+- Campos del vehículo: solo si es tarjeta de circulación
 - Si un dato no es visible: cadena vacía ""`;
 
   status.textContent='📡 Analizando documento...';
@@ -579,24 +583,28 @@ function fillOCRFields(obj,opts){
   if(!obj||obj.error==='imagen_borrosa'){status.textContent='⚠️ Imagen borrosa';return;}
   const filled=[];
 
-    if(obj.tipo==='ine'){
-      if(obj.nombre){fillTitle('nombre',obj.nombre);filled.push('Nombre');}
-      let curpParsed=null;
+    // INE, licencia, pasaporte u otra identificación: datos de la persona
+    if(obj.tipo&&obj.tipo!=='circulacion'){
+      let curpParsed=null,curpClean='';
       if(obj.curp&&obj.curp.replace(/\s/g,'').length===18){
-        const curpClean=obj.curp.replace(/\s/g,'').toUpperCase();
+        curpClean=obj.curp.replace(/\s/g,'').toUpperCase();
         curpParsed=parseCurp(curpClean);
+        const cst=document.getElementById('curp-status');
+        fill('curp',curpClean);
+        filled.push('CURP');
         if(curpParsed.valid){
-          fill('curp',curpClean);
-          filled.push('CURP');
-          const cst=document.getElementById('curp-status');
           if(cst){
             if(curpParsed.digitoOk){cst.style.color='var(--green)';cst.textContent='✅ CURP leído del documento';}
             else{cst.style.color='#f0a000';cst.textContent='⚠️ CURP leído, pero el dígito verificador no coincide — verifícalo contra el documento';}
           }
         }else{
-          console.warn('CURP leído pero no válido:',curpClean,curpParsed.error);
+          // Se llena igual para que el policía lo corrija viendo el documento
+          if(cst){cst.style.color='#f0a000';cst.textContent='⚠️ CURP leído pero no es válido ('+curpParsed.error+') — compáralo con el documento';}
         }
       }
+      // Nombre en orden "Apellidos Nombre(s)": la licencia lo trae al revés que la INE
+      const nom=ordenarNombre(obj,curpParsed&&curpParsed.valid?curpClean:'');
+      if(nom.nombre){fillTitle('nombre',nom.nombre);filled.push('Nombre');}
       // Datos derivados del CURP (algorítmicos) tienen prioridad por ser más confiables
       if(curpParsed&&curpParsed.valid){
         fill('nacimiento',curpParsed.fecha_nac);calcEdad();filled.push('Fecha de nacimiento (CURP)');
@@ -613,6 +621,7 @@ function fillOCRFields(obj,opts){
       if(edoNombre){fill('estado_origen',edoNombre);filled.push('Estado de origen');}
       // Menor de edad
       if(obj.menor===true){document.getElementById('vulnerable').value='Sí';filled.push('Sector vulnerable (menor)');}
+      if(obj.tipo==='licencia')anotarLicencia(obj)&&filled.push('Datos de la licencia');
     } else if(obj.tipo==='circulacion'){
       if(obj.marca){fill('marca',buscarMarca(obj.marca)||toTitleCase(obj.marca));updateSubmarcaList();filled.push('Marca');}
       if(obj.submarca){
@@ -749,4 +758,22 @@ function preguntarOtraCaptura(){
       startOCR();
     }
   },800);
+}
+
+// Agrega a Datos adicionales qué licencia presentó (se puede borrar o editar)
+function anotarLicencia(obj){
+  const partes=[];
+  if(obj.licencia_tipo)partes.push('tipo '+String(obj.licencia_tipo).trim().toUpperCase());
+  if(obj.licencia_estado)partes.push('del estado de '+toTitleCase(String(obj.licencia_estado).trim()));
+  if(obj.licencia_folio)partes.push('folio '+String(obj.licencia_folio).trim());
+  const vig=String(obj.licencia_vigencia||'').trim();
+  if(/permanente/i.test(vig))partes.push('permanente');
+  else if(vig)partes.push((fechaVencida(vig)?'VENCIDA desde el ':'vigente hasta el ')+vig);
+  if(!partes.length)return false;
+  const frase='Presenta licencia de conducir '+partes.join(', ')+'.';
+  if(obsManualPersona.includes(frase))return false;
+  obsManualPersona=(obsManualPersona.trim()?obsManualPersona.trim()+' ':'')+frase;
+  refreshAdicionales();
+  document.getElementById('adicionales').classList.add('filled');
+  return true;
 }
