@@ -162,7 +162,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Subcategoría</label>
+        <label>Subcategoría <span class="req">*</span></label>
         <select id="subcategoria" data-change="checkOtroSubcat"><option value="">-- Primero categoría --</option></select>
       </div>
     </div>
@@ -217,7 +217,7 @@
     </div>
     <div class="field-row">
       <div class="field"><label>Número de BODYCAM</label><input type="text" id="bodycam"></div>
-      <div class="field"><label>Motivo del Empadronamiento <span class="req">*</span></label><select id="motivo_sel" data-change="motivoSelChange"><option value="">-- Seleccionar --</option><option value="Prevención del delito">Prevención del delito</option><option value="Vigilancia y seguridad pública">Vigilancia y seguridad pública</option><option value="Actitud o conducta sospechosa">Actitud o conducta sospechosa</option><option value="Reporte ciudadano">Reporte ciudadano</option><option value="Operativo de seguridad">Operativo de seguridad</option><option value="Verificación de identidad">Verificación de identidad</option><option value="Falta administrativa">Falta administrativa</option><option value="Alteración del orden público">Alteración del orden público</option><option value="Punto de revisión">Punto de revisión</option><option value="Apoyo a otra corporación">Apoyo a otra corporación</option><option value="Atención a grupo vulnerable">Atención a grupo vulnerable</option><option value="Merodeo">Merodeo</option><option value="__otro">Otro (especificar)…</option></select><input type="text" id="motivo" class="hidden input-mt6" placeholder="Escribe el motivo..."></div>
+      <div class="field"><label>Motivo del Empadronamiento <span class="req">*</span></label><select id="motivo_sel" data-change="motivoSelChange"><!-- opciones desde MOTIVOS (js/catalogos.js) --></select><input type="text" id="motivo" class="hidden input-mt6" placeholder="Escribe el motivo..."></div>
     </div>
   </div>
 </div>

@@ -17,7 +17,23 @@ const CURP_ESTADOS={'AS':'Aguascalientes','BC':'Baja California','BS':'Baja Cali
 
 const NUM_ESTADOS={'01':'Aguascalientes','02':'Baja California','03':'Baja California Sur','04':'Campeche','05':'Coahuila','06':'Colima','07':'Chiapas','08':'Chihuahua','09':'Ciudad de México','10':'Durango','11':'Guanajuato','12':'Guerrero','13':'Hidalgo','14':'Jalisco','15':'Estado de México','16':'Michoacán','17':'Morelos','18':'Nayarit','19':'Nuevo León','20':'Oaxaca','21':'Puebla','22':'Querétaro','23':'Quintana Roo','24':'San Luis Potosí','25':'Sinaloa','26':'Sonora','27':'Tabasco','28':'Tamaulipas','29':'Tlaxcala','30':'Veracruz','31':'Yucatán','32':'Zacatecas'};
 
-const MOTIVOS=['Prevención del delito','Vigilancia y seguridad pública','Actitud o conducta sospechosa','Reporte ciudadano','Operativo de seguridad','Verificación de identidad','Falta administrativa','Alteración del orden público','Punto de revisión','Apoyo a otra corporación','Atención a grupo vulnerable','Merodeo'];
+// Motivos del empadronamiento. Todo contacto con una persona es un acto de
+// molestia (art. 16 constitucional): debe tener una causa objetiva que se
+// pueda explicar, no la apariencia o una impresión subjetiva. Cada motivo
+// lleva su fundamento (se ve al dejar el dedo sobre la opción).
+// Ojo: el texto se copia tal cual al reporte; revísalo con el área jurídica
+// antes de cambiarlo.
+const MOTIVOS=[
+  {texto:'Prevención del delito',fundamento:'Art. 21 constitucional: la seguridad pública comprende la prevención de los delitos'},
+  {texto:'Patrullaje preventivo y proximidad social',fundamento:'Art. 21 constitucional y Ley General del Sistema Nacional de Seguridad Pública'},
+  {texto:'Atención a reporte ciudadano o del C5',fundamento:'Denuncia o reporte que señala hechos concretos (art. 21 constitucional)'},
+  {texto:'Sospecha razonable por hechos objetivos observados',fundamento:'Control preventivo provisional (criterios de la SCJN): describir en datos adicionales qué hechos concretos se observaron'},
+  {texto:'Comisión de falta administrativa',fundamento:'Art. 21 constitucional: sanción de infracciones a reglamentos gubernativos y de policía'},
+  {texto:'Alteración del orden público',fundamento:'Falta administrativa prevista en el reglamento de policía municipal (art. 21 constitucional)'},
+  {texto:'Operativo o punto de revisión autorizado',fundamento:'Operativo ordenado por autoridad competente, con registro de la orden'},
+  {texto:'Apoyo solicitado por otra autoridad',fundamento:'Coordinación entre instituciones de seguridad pública (art. 21 constitucional)'},
+  {texto:'Asistencia a persona en situación de vulnerabilidad',fundamento:'Art. 1 constitucional: obligación de proteger los derechos humanos'},
+];
 const TIPOS_VEHICULO=[
   {nombre:'Motocicleta',svg:'<svg viewBox="0 0 64 32" width="48" height="24"><circle cx="12" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="52" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M12 24 L20 12 L32 12 L38 20 L52 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M32 12 L36 6 L44 6 L46 12" fill="none" stroke="currentColor" stroke-width="2"/><path d="M38 20 L42 14" fill="none" stroke="currentColor" stroke-width="2"/></svg>'},
   {nombre:'Bicicleta',svg:'<svg viewBox="0 0 64 32" width="48" height="24"><circle cx="14" cy="22" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="50" cy="22" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M14 22 L28 10 L50 22" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M28 10 L32 22" stroke="currentColor" stroke-width="2"/><path d="M24 10 L36 10" stroke="currentColor" stroke-width="2.5"/><path d="M28 6 L28 10" stroke="currentColor" stroke-width="2"/></svg>'},
