@@ -8,6 +8,10 @@ window.addEventListener('unhandledrejection',function(ev){
 });
 
 
+// Versión de la app: súbela junto con CACHE en sw.js en cada cambio publicado.
+// Se muestra al pie de la página para saber qué versión tiene cada teléfono.
+const APP_VERSION='19';
+
 // ── EVENTOS DE LA INTERFAZ ─────────────────────────────
 // El HTML no lleva onclick/oninput: cada elemento declara la función que usa
 // con data-action (clic), data-input, data-change, data-focus o data-blur, y
@@ -269,6 +273,24 @@ function geoLocate(){
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
+// Nominatim permite máximo 1 petición por segundo y bloquea a quien se pasa.
+// Todas las consultas pasan por aquí y se forman en fila con 1.1 s entre
+// cada una. Si la consulta ya no sirve (el usuario siguió escribiendo),
+// vigente() devuelve false y se salta sin gastar el turno.
+let _nominatimCola=Promise.resolve(),_nominatimUltima=0;
+function nominatimFetch(url,vigente){
+  const turno=_nominatimCola.then(async()=>{
+    if(vigente&&!vigente())throw new Error('consulta descartada');
+    const espera=_nominatimUltima+1100-Date.now();
+    if(espera>0)await sleep(espera);
+    if(vigente&&!vigente())throw new Error('consulta descartada');
+    _nominatimUltima=Date.now();
+    return fetch(url);
+  });
+  _nominatimCola=turno.catch(()=>{});
+  return turno;
+}
+
 // Busca la calle que cruza (perpendicular) a la calle dada, alrededor de un punto.
 // Devuelve true si encontró una. Respeta el límite de ~1 petición/seg de Nominatim.
 async function detectarCruceEn(lat,lon,calle,statusElId){
@@ -276,7 +298,7 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
   try{
     const probeRoad=async(dlat,dlon)=>{
       try{
-        const r2=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat+dlat}&lon=${lon+dlon}&format=json&accept-language=es`);
+        const r2=await nominatimFetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat+dlat}&lon=${lon+dlon}&format=json&accept-language=es`);
         if(!r2.ok)return '';
         const d2=await r2.json();
         return d2.address?.road||d2.address?.pedestrian||d2.address?.footway||'';
@@ -286,7 +308,6 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
     // Sondeo al norte: si sigue siendo la misma calle, corre Norte-Sur (el cruce
     // está al Este/Oeste); si cambia, corre Este-Oeste (el cruce está al Norte/Sur)
     const rNorte=await probeRoad(D,0);
-    await sleep(1100);
     const corrVertical=rNorte&&rNorte===calle;
     const offsets=corrVertical
       ? [[0,D],[0,-D],[D,D],[D,-D],[-D,D],[-D,-D]]
@@ -296,7 +317,6 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
       const c2=await probeRoad(dlat,dlon);
       if(c2&&c2!==calle)calles.add(c2);
       if(calles.size>0)break;
-      await sleep(1100);
     }
     const cruceEl=document.getElementById('addr_cruce');
     if(calles.size>0){
@@ -322,7 +342,7 @@ async function fetchAddress(lat, lon, acc, statusElId){
   const st=document.getElementById(statusElId);
   try{
     // Nominatim — calle, CP, municipio
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
+    const r=await nominatimFetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
     if(!r.ok)throw new Error(`Nominatim respondió ${r.status} — probablemente límite de peticiones alcanzado, espera unos segundos e intenta de nuevo`);
     const d=await r.json();
     if(d.error){throw new Error('No se encontró información para este punto ('+d.error+')');}
@@ -664,6 +684,13 @@ function showPreview(canvas){
 // ── OCR CON GROQ (vía proxy en Cloudflare Workers) ─────
 // La key de Groq vive como secreto en el Worker, nunca en el teléfono.
 const OCR_PROXY_URL='https://fc-ocr.therts649.workers.dev';
+// Modelos de visión de Groq, en orden de preferencia. Si Groq retira uno,
+// la app pasa solo al siguiente; revisa console.groq.com/docs/models de vez
+// en cuando y actualiza esta lista (y MODELOS_PERMITIDOS en el Worker).
+const OCR_MODELOS=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
+// Tamaño de la foto que se envía: suficiente para leer el CURP sin gastar
+// datos de más con señal mala.
+const OCR_MAX_LADO=1600,OCR_CALIDAD_JPEG=0.85;
 const OCR_TOKEN_KEY='fc_ocr_token';
 // La clave de acceso solo se pide si el Worker la exige (responde 401) y se
 // recuerda en el teléfono. Si en Cloudflare no hay ACCESS_TOKEN, nunca se pide.
@@ -675,6 +702,83 @@ function pedirOcrToken(incorrecta){
   const t=(prompt(msg)||'').trim();
   try{if(t)localStorage.setItem(OCR_TOKEN_KEY,t);else localStorage.removeItem(OCR_TOKEN_KEY);}catch(e){}
   return t;
+}
+
+// Reduce la foto, la pasa a gris con contraste y la convierte a JPEG base64
+function canvasParaOCR(canvas){
+  let src=canvas;
+  const lado=Math.max(canvas.width,canvas.height);
+  if(lado>OCR_MAX_LADO){
+    const k=OCR_MAX_LADO/lado;
+    src=document.createElement('canvas');
+    src.width=Math.round(canvas.width*k);src.height=Math.round(canvas.height*k);
+    src.getContext('2d').drawImage(canvas,0,0,src.width,src.height);
+  }
+  return preprocessCanvas(src).toDataURL('image/jpeg',OCR_CALIDAD_JPEG).split(',')[1];
+}
+function esErrorDeRed(e){return /^(Sin conexión|Tiempo agotado)/.test(e&&e.message||'');}
+
+// ── DOCUMENTOS PENDIENTES (SIN SEÑAL) ──────────────────
+// Si no hay internet, la foto ya procesada se guarda y se lee después con
+// "Leer ahora". Se borra con "Terminar turno" o a las 12 horas.
+const OCR_COLA_KEY='fc_ocr_pendientes_v1',OCR_COLA_MAX=4;
+function leerColaOcr(){
+  try{
+    const c=JSON.parse(localStorage.getItem(OCR_COLA_KEY)||'[]');
+    const vivos=c.filter(x=>x&&x.b64&&Date.now()-x.ts<=DRAFT_MAX_AGE_MS);
+    if(vivos.length!==c.length)guardarColaOcr(vivos);
+    return vivos;
+  }catch(e){return[];}
+}
+function guardarColaOcr(c){
+  try{
+    if(c.length)localStorage.setItem(OCR_COLA_KEY,JSON.stringify(c));
+    else localStorage.removeItem(OCR_COLA_KEY);
+    return true;
+  }catch(e){return false;}
+}
+function encolarOcr(b64){
+  const c=leerColaOcr();
+  if(c.length>=OCR_COLA_MAX){showToast(`⚠️ Ya hay ${OCR_COLA_MAX} documentos esperando señal — léelos o bórralos primero`,3500);return false;}
+  c.push({b64,ts:Date.now(),tabId:activeTabId});
+  if(!guardarColaOcr(c)){showToast('⚠️ No hay espacio en el teléfono para guardar la foto',3500);return false;}
+  actualizarAvisoOcr();
+  return true;
+}
+function actualizarAvisoOcr(){
+  const n=leerColaOcr().length;
+  const box=document.getElementById('ocr-pendientes');
+  if(!box)return;
+  box.style.display=n?'flex':'none';
+  document.getElementById('ocr-pendientes-txt').textContent=`📥 ${n} documento(s) por leer cuando haya señal`;
+}
+async function procesarOcrPendientes(){
+  if(!navigator.onLine){showToast('⚠️ Todavía no hay conexión');return;}
+  const cola=leerColaOcr();
+  if(!cola.length){actualizarAvisoOcr();return;}
+  const status=document.getElementById('scan-status');
+  let ok=0;
+  for(const item of cola){
+    // Cada foto se llena en la pestaña donde se tomó, si sigue abierta
+    if(item.tabId&&item.tabId!==activeTabId&&tabs.some(t=>t.id===item.tabId))switchTab(item.tabId);
+    status.textContent=`🔍 Leyendo documento pendiente ${ok+1} de ${cola.length}...`;
+    try{
+      const obj=await callGroqWithRetry(item.b64);
+      fillOCRFields(obj,{sinPreguntar:true});
+      ok++;
+      guardarColaOcr(leerColaOcr().filter(x=>x.ts!==item.ts));
+    }catch(e){
+      status.textContent='❌ '+e.message;
+      break;
+    }
+  }
+  actualizarAvisoOcr();
+  if(ok)showToast(`✅ ${ok} documento(s) leído(s) — revisa los campos verdes`,3000);
+}
+function descartarOcrPendientes(){
+  if(!confirm('¿Borrar las fotos de documentos pendientes de leer?'))return;
+  guardarColaOcr([]);
+  actualizarAvisoOcr();
 }
 
 async function captureOCR(){
@@ -689,22 +793,25 @@ async function captureOCR(){
   savePhotoToDevice(canvas);
   showPreview(canvas);
   checkImageQuality(canvas);
+  const base64=canvasParaOCR(canvas);
   if(!navigator.onLine){
-    status.textContent='❌ Sin conexión a internet. El OCR requiere internet.';
+    if(encolarOcr(base64))status.textContent='📥 Sin conexión: la foto se guardó y se leerá cuando vuelva la señal.';
     document.getElementById('btn-releer').style.display='inline-flex';
     return;
   }
   setProgress(10);
   status.textContent='🔍 Analizando documento con IA...';
   try{
-    const processed=preprocessCanvas(canvas);
-    const base64=processed.toDataURL('image/jpeg',0.9).split(',')[1];
     const obj=await callGroqWithRetry(base64);
     setProgress(90);
     fillOCRFields(obj);
   }catch(e){
-    status.textContent='❌ '+e.message;
     setProgress(0);
+    if(esErrorDeRed(e)&&encolarOcr(base64)){
+      status.textContent='📥 La señal falló: la foto se guardó y se leerá cuando vuelva.';
+    }else{
+      status.textContent='❌ '+e.message;
+    }
     console.error('captureOCR error:',e);
   }
   document.getElementById('btn-releer').style.display='inline-flex';
@@ -712,10 +819,7 @@ async function captureOCR(){
 
 // ── REINTENTO AUTOMÁTICO ───────────────────────────────
 async function callGroqWithRetry(base64,maxAttempts){
-  // Modelos de visión de Groq, en orden de preferencia. qwen3.6 es "Preview"
-  // y a veces Groq restringe el acceso; los otros dos son modelos de
-  // producción estables que sirven como respaldo automático.
-  const modelos=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
+  const modelos=OCR_MODELOS;
   let lastErr,clavePedida=false;
   for(let i=0;i<modelos.length;i++){
     const modelo=modelos[i];
@@ -853,20 +957,15 @@ async function processGalleryImages(input){
   if(!files.length)return;
   const status=document.getElementById('scan-status');
   document.getElementById('ocr-summary').style.display='none';
-  if(!navigator.onLine){
-    status.textContent='❌ Sin conexión a internet. El OCR requiere internet.';
-    input.value='';
-    return;
-  }
-  let okCount=0,failCount=0,errorDetails=[];
+  let okCount=0,failCount=0,queuedCount=0,errorDetails=[];
   for(let i=0;i<files.length;i++){
     const file=files[i];
     const label=file&&file.name?file.name:`imagen ${i+1}`;
     status.textContent=isHeicFile(file)?`🔄 Convirtiendo ${label} (HEIC→JPG)...`:`🔍 Procesando ${label} (${i+1}/${files.length})...`;
     setProgress(Math.round((i/files.length)*80));
     try{
-      await processSingleImage(file);
-      okCount++;
+      if(await processSingleImage(file)==='encolado')queuedCount++;
+      else okCount++;
     }catch(e){
       failCount++;
       const msg=e&&e.message?e.message:String(e);
@@ -876,7 +975,9 @@ async function processGalleryImages(input){
   }
   setProgress(100);
   setTimeout(()=>setProgress(0),1000);
-  if(failCount>0&&okCount===0){
+  if(queuedCount>0&&failCount===0){
+    status.textContent=`📥 Sin señal: ${queuedCount} foto(s) guardada(s) para leer cuando vuelva la conexión.`;
+  }else if(failCount>0&&okCount===0&&queuedCount===0){
     status.innerHTML=`❌ No se pudo procesar ninguna imagen:<br>`+errorDetails.map(d=>'• '+escHtml(d)).join('<br>');
   }else if(failCount>0){
     status.innerHTML=`⚠️ ${okCount} imagen(es) OK, ${failCount} con error:<br>`+errorDetails.map(d=>'• '+escHtml(d)).join('<br>');
@@ -961,14 +1062,23 @@ async function processSingleImage(file){
   if(source.bitmap&&source.bitmap.close)source.bitmap.close();
   showPreview(canvas);
   checkImageQuality(canvas);
-  const processed=preprocessCanvas(canvas);
-  const base64=processed.toDataURL('image/jpeg',0.9).split(',')[1];
+  const base64=canvasParaOCR(canvas);
   if(!base64){throw new Error('No se pudo convertir la imagen a base64 (canvas vacío)');}
-  const obj=await callGroqWithRetry(base64);
+  if(!navigator.onLine){
+    if(encolarOcr(base64))return'encolado';
+    throw new Error('Sin conexión y no se pudo guardar la foto');
+  }
+  let obj;
+  try{
+    obj=await callGroqWithRetry(base64);
+  }catch(e){
+    if(esErrorDeRed(e)&&encolarOcr(base64))return'encolado';
+    throw e;
+  }
   fillOCRFields(obj);
 }
 
-function fillOCRFields(obj){
+function fillOCRFields(obj,opts){
   const status=document.getElementById('scan-status');
   if(!obj||obj.error==='imagen_borrosa'){status.textContent='⚠️ Imagen borrosa';return;}
   const filled=[];
@@ -1048,7 +1158,7 @@ function fillOCRFields(obj){
   document.getElementById('btn-releer').style.display='inline-flex';
   status.textContent='✅ Listo — revisa los campos verdes';
   // Multi-captura: ofrecer escanear otro documento
-  preguntarOtraCaptura();
+  if(!(opts&&opts.sinPreguntar))preguntarOtraCaptura();
 }
 
 // ── NUEVO EMPADRONAMIENTO ──────────────────────────────
@@ -1398,9 +1508,9 @@ function parsePlace(place){
     formatted:(place.formattedAddress||'').replace(/,\s*M[eé]xico$/i,'').trim()
   };
 }
-async function nominatimSearch(query){
+async function nominatimSearch(query,vigente){
   const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query+', Nuevo León, México')}&format=json&limit=6&accept-language=es&countrycodes=mx&viewbox=-100.65,25.95,-99.95,25.40&bounded=0`;
-  const r=await fetch(url);
+  const r=await nominatimFetch(url,vigente);
   if(!r.ok)throw new Error('Nominatim '+r.status);
   const res=await r.json();
   return res.map(x=>{
@@ -1444,7 +1554,7 @@ function buscarDomicilio(query){
   domicilioTimer=setTimeout(async()=>{
     let items=null,gerr='';
     if(getGoogleKey()){try{items=await placesAutocomplete(query);}catch(e){gerr=e.message;}}
-    if(!items){try{items=await nominatimSearch(query);}catch(e){items=[];}}
+    if(!items){try{items=await nominatimSearch(query,()=>seq===_domSeq);}catch(e){items=[];}}
     if(seq!==_domSeq)return;
     pintarSugerencias(sugg,items,pickDomicilio,gerr);
   },350);
@@ -1485,7 +1595,7 @@ function buscarLugar(query){
   lugarTimer=setTimeout(async()=>{
     let items=null,gerr='';
     if(getGoogleKey()){try{items=await placesAutocomplete(query);}catch(e){gerr=e.message;}}
-    if(!items){try{items=await nominatimSearch(query);}catch(e){items=[];}}
+    if(!items){try{items=await nominatimSearch(query,()=>seq===_lugarSeq);}catch(e){items=[];}}
     if(seq!==_lugarSeq)return;
     pintarSugerencias(sugg,items,pickLugar,gerr);
   },350);
@@ -1858,7 +1968,10 @@ let editingLoteId=null;
 const LOTE_KEY='fc_lote_v1';
 
 function saveLote(){
-  try{localStorage.setItem(LOTE_KEY,JSON.stringify({data:loteEmpadronamientos,savedAt:Date.now()}));}catch(e){}
+  try{
+    if(loteEmpadronamientos.length)localStorage.setItem(LOTE_KEY,JSON.stringify({data:loteEmpadronamientos,savedAt:Date.now()}));
+    else localStorage.removeItem(LOTE_KEY);
+  }catch(e){}
 }
 function restoreLoteIfAny(){
   try{
@@ -2557,13 +2670,45 @@ function cerrarTodasLasPestanas(){
   const pend=tabs.filter(t=>tabFormStatus(t.state.form)!=='empty'&&!t.generated).length;
   const msg=pend?`Hay ${pend} pestaña(s) con datos sin generar.\n\n¿Cerrar TODAS las pestañas y descartarlas?\n(El lote no se borra)`:'¿Cerrar todas las pestañas?\n(El lote no se borra)';
   if(!confirm(msg))return;
+  reiniciarPestanas();
+  showToast('🧹 Pestañas cerradas — turno limpio');
+}
+// Deja una sola pestaña en blanco (conserva los datos del policía)
+function reiniciarPestanas(){
   const f=buildNewTabForm(backupForm(),false);
   const t={id:newTabId(),state:{form:f,neg:[],carac:[],obsP:'',obsV:''},editLoteId:null,generated:false};
   tabs=[t];activeTabId=t.id;
   applyTabState(t.state);editingLoteId=null;updateBtnAgregarLoteLabel();initDT();
   t.state=captureTabState();
   saveTabs();renderTabs(true);
-  showToast('🧹 Pestañas cerradas — turno limpio');
+}
+
+// Fin de turno completo: borra de este teléfono pestañas, lote, fotos
+// pendientes y el último reporte. Solo quedan los datos del policía.
+function terminarTurno(){
+  syncActiveTab();
+  const pend=tabs.filter(t=>tabFormStatus(t.state.form)!=='empty'&&!t.generated).length;
+  const nLote=loteEmpadronamientos.length,nOcr=leerColaOcr().length;
+  const partes=[];
+  if(pend)partes.push(`${pend} pestaña(s) sin generar`);
+  if(nLote)partes.push(`${nLote} empadronamiento(s) en el lote`);
+  if(nOcr)partes.push(`${nOcr} foto(s) por leer`);
+  const msg='¿Terminar turno?\n\nSe borrará de este teléfono todo lo capturado'+(partes.length?':\n• '+partes.join('\n• '):'.')+'\n\nSe conservan tus datos de policía (nombre, N.E., zona y CRP).';
+  if(!confirm(msg))return;
+  loteEmpadronamientos=[];saveLote();actualizarBarraLote();
+  guardarColaOcr([]);actualizarAvisoOcr();
+  undoBackup=null;
+  try{localStorage.removeItem(DRAFT_KEY);}catch(e){}
+  reiniciarPestanas();
+  document.getElementById('output-text').value='';
+  document.getElementById('output-box').style.display='none';
+  document.getElementById('ocr-preview').style.display='none';
+  document.getElementById('ocr-preview-img').removeAttribute('src');
+  document.getElementById('ocr-summary').style.display='none';
+  document.getElementById('img-quality').style.display='none';
+  document.getElementById('scan-status').textContent='';
+  window.scrollTo({top:0,behavior:'smooth'});
+  showToast('🔒 Turno terminado — se borró lo capturado en este teléfono',3200);
 }
 
 // Genera el reporte de todas las pestañas completas y los manda al lote
@@ -2776,9 +2921,11 @@ document.addEventListener('focusin',e=>{
 });
 
 window.onload=()=>{
+  document.getElementById('app-version').textContent='Versión '+APP_VERSION;
   renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();
   updateGoogleKeyUI();
+  actualizarAvisoOcr();
   const loteCount=restoreLoteIfAny();
   const nTabs=initTabs();
   if(loteCount&&nTabs)showToast(`📦 Lote recuperado (${loteCount}) y ${nTabs} pestaña(s) en progreso`);
@@ -2787,12 +2934,29 @@ window.onload=()=>{
 };
 
 // ── REGISTRAR SERVICE WORKER (PWA offline) ─────────────
+// Cuando se publica una versión nueva, el service worker se actualiza solo;
+// aquí se avisa para recargar (la app puede quedar abierta todo el turno).
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
+    const habiaVersion=!!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(!habiaVersion)return; // primera instalación: no hay nada que actualizar
+      const b=document.getElementById('update-banner');
+      if(b)b.style.display='flex';
+    });
     navigator.serviceWorker.register('./sw.js')
-      .then(()=>console.log('Service Worker registrado — app funcionará offline'))
+      .then(reg=>{
+        console.log('Service Worker registrado — app funcionará offline');
+        const buscar=()=>reg.update().catch(()=>{});
+        document.addEventListener('visibilitychange',()=>{if(!document.hidden)buscar();});
+        setInterval(buscar,30*60*1000);
+      })
       .catch(err=>console.log('SW no disponible (normal si se abre como archivo local):',err.message));
   });
+}
+function aplicarActualizacion(){
+  if(tabsReady)saveTabs();
+  location.reload();
 }
 
 // ── INSTALAR PWA ────────────────────────────────────────
@@ -2835,5 +2999,9 @@ function updateConnIndicator(){
     ind.title='Sin conexión — OCR y dirección por GPS no disponibles';
   }
 }
-window.addEventListener('online',()=>{updateConnIndicator();showToast('🌐 Conexión restaurada');});
+window.addEventListener('online',()=>{
+  updateConnIndicator();
+  const n=leerColaOcr().length;
+  showToast(n?`🌐 Conexión restaurada — toca "Leer ahora" para ${n} documento(s) pendiente(s)`:'🌐 Conexión restaurada',n?4000:2200);
+});
 window.addEventListener('offline',()=>{updateConnIndicator();showToast('⚠️ Sin conexión a internet');});
