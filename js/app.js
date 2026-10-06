@@ -575,13 +575,15 @@ function showPreview(canvas){
 // La key de Groq vive como secreto en el Worker, nunca en el teléfono.
 const OCR_PROXY_URL='https://fc-ocr.therts649.workers.dev';
 const OCR_TOKEN_KEY='fc_ocr_token';
+// La clave de acceso solo se pide si el Worker la exige (responde 401) y se
+// recuerda en el teléfono. Si en Cloudflare no hay ACCESS_TOKEN, nunca se pide.
 function getOcrToken(){
-  let t='';
-  try{t=localStorage.getItem(OCR_TOKEN_KEY)||'';}catch(e){}
-  if(!t){
-    t=(prompt('Clave de acceso para OCR (pídela a tu mando):')||'').trim();
-    if(t){try{localStorage.setItem(OCR_TOKEN_KEY,t);}catch(e){}}
-  }
+  try{return localStorage.getItem(OCR_TOKEN_KEY)||'';}catch(e){return'';}
+}
+function pedirOcrToken(incorrecta){
+  const msg=incorrecta?'La clave de acceso para OCR no es correcta.\n\nEscríbela de nuevo (pídela a tu mando):':'Clave de acceso para OCR (pídela a tu mando):';
+  const t=(prompt(msg)||'').trim();
+  try{if(t)localStorage.setItem(OCR_TOKEN_KEY,t);else localStorage.removeItem(OCR_TOKEN_KEY);}catch(e){}
   return t;
 }
 
@@ -624,7 +626,7 @@ async function callGroqWithRetry(base64,maxAttempts){
   // y a veces Groq restringe el acceso; los otros dos son modelos de
   // producción estables que sirven como respaldo automático.
   const modelos=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
-  let lastErr;
+  let lastErr,clavePedida=false;
   for(let i=0;i<modelos.length;i++){
     const modelo=modelos[i];
     try{
@@ -637,6 +639,16 @@ async function callGroqWithRetry(base64,maxAttempts){
     }catch(e){
       lastErr=e;
       console.log(`Modelo ${modelo} falló:`,e.message);
+      // Clave de acceso: se pide una sola vez por escaneo y no se prueban
+      // otros modelos (el problema es la clave, no el modelo)
+      if(e.authError){
+        if(clavePedida||!pedirOcrToken(e.teniaClave)){
+          throw new Error('Falta la clave de acceso para OCR o no es correcta — pídela a tu mando');
+        }
+        clavePedida=true;
+        i--;
+        continue;
+      }
       // Si es error de conexión (no de modelo), reintentar el mismo modelo una vez más antes de cambiar
       if(e.message.includes('Sin conexión')||e.message.includes('Tiempo agotado')){
         try{
@@ -687,7 +699,7 @@ Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin come
   try{
     resp=await fetch(OCR_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','X-FC-Token':getOcrToken()},
+      headers:Object.assign({'Content-Type':'application/json'},getOcrToken()?{'X-FC-Token':getOcrToken()}:{}),
       signal:controller.signal,
       body:JSON.stringify(bodyPayload)
     });
@@ -706,8 +718,11 @@ Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin come
       const err=await resp.json();
       errMsg=err.error?.message||errMsg;
     }catch(e){}
-    // Clave mal escrita o cambiada: se borra para pedirla de nuevo
-    if(resp.status===401){try{localStorage.removeItem(OCR_TOKEN_KEY);}catch(e){}}
+    if(resp.status===401){
+      const err=new Error(errMsg);
+      err.authError=true;err.teniaClave=!!getOcrToken();
+      throw err;
+    }
     throw new Error(errMsg);
   }
 
