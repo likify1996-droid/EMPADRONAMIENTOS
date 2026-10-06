@@ -14,6 +14,11 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 - **Ubicación:** GPS, mapa con pin y búsqueda de direcciones. Usa OpenStreetMap (Nominatim) o, opcionalmente, Google Places con una llave propia.
 - **Catálogo de vehículos:** al elegir o escanear la submarca se llena solo el tipo de vehículo, y también la marca si falta.
 - **🔒 Terminar turno:** borra del teléfono todo lo capturado y conserva solo los datos del policía.
+- **Marco guía en la cámara:** a la IA se envía solo lo que está dentro del marco de la credencial. Con 🔲 se apaga para documentos grandes.
+- **Revisión de datos:** NIV/serie (17 caracteres y dígito verificador), placas, teléfono de 10 dígitos y que la edad cuadre con la fecha de nacimiento. Lo dudoso se marca en naranja; avisa pero no impide generar.
+- **📤 WhatsApp:** envía el reporte o el lote completo sin copiar y pegar.
+- **🎤 Dictado por voz** en Datos adicionales, Tatuajes y Observaciones (necesita internet).
+- **🖨 PDF del lote:** abre "Imprimir"; en el teléfono se elige "Guardar como PDF".
 
 ## Archivos
 
@@ -22,14 +27,24 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 | `index.html` | La estructura de la página. No lleva estilos ni `onclick`. |
 | `css/styles.css` | Todos los estilos y los temas claro y oscuro. |
 | `js/catalogos.js` | Datos: categorías, estados, motivos, tipos y catálogo de vehículos. |
-| `js/app.js` | Toda la lógica de la app. |
+| `js/nucleo.js` | Base de la interfaz: eventos, avisos, tema y utilidades. Aquí va `APP_VERSION`. |
+| `js/revisiones.js` | Reglas para revisar NIV, placas, teléfono y edad. |
+| `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía, avisos de revisión y dictado. |
+| `js/vehiculo.js` | Autocompletado de marca y submarca, y tipo automático. |
+| `js/ubicacion.js` | GPS, mapa y búsqueda de direcciones. |
+| `js/ocr.js` | Cámara, galería, CURP, envío al Worker y fotos pendientes. |
+| `js/reporte.js` | Texto del reporte, lote, copiar, WhatsApp, PDF y vista previa. |
+| `js/pestanas.js` | Pestañas y autoguardado. |
+| `js/app.js` | Arranque de la app, service worker e instalación. |
 | `sw.js` | Service worker: hace que la app funcione sin conexión. |
 | `manifest.json`, `icon-*.png` | Datos e íconos para instalar la app. |
+| `fonts/` | Tipografías Rajdhani y Exo 2 (licencia OFL), para que se vean igual sin conexión. |
+| `tests/` | Pruebas automáticas (ver abajo). |
 | `worker/fc-ocr.js` | Copia del Worker de Cloudflare que guarda la API key de Groq. |
 
 ### Cómo se conectan los botones
 
-Los elementos del HTML declaran la función que usan con atributos `data-*`, y un solo manejador en `js/app.js` las llama ("EVENTOS DE LA INTERFAZ"):
+Los elementos del HTML declaran la función que usan con atributos `data-*`, y un solo manejador en `js/nucleo.js` las llama ("EVENTOS DE LA INTERFAZ"):
 
 ```html
 <button data-action="limpiarSeccion" data-args='["persona"]'>🗑 Limpiar</button>
@@ -43,10 +58,23 @@ Los elementos del HTML declaran la función que usan con atributos `data-*`, y u
 
 1. Edita los archivos **del repositorio** (no subas una copia vieja de `index.html` encima).
 2. Sube la versión en **dos lugares**:
-   - `APP_VERSION` al inicio de `js/app.js` (p. ej. `'20'`).
+   - `APP_VERSION` al inicio de `js/nucleo.js` (p. ej. `'20'`).
    - `CACHE` en `sw.js` (p. ej. `'fc-empadronamiento-v20'`).
 3. Une el cambio a `main`. GitHub Pages lo publica en 1–2 minutos.
 4. Los teléfonos con la app abierta ven el aviso **"Hay una versión nueva"**. La versión que tiene cada teléfono aparece al pie de la página.
+
+## Pruebas automáticas
+
+La carpeta `tests/` tiene pruebas que abren la app en Chromium y la usan como un policía: llenan el formulario, generan el reporte, escanean con el OCR simulado, prueban el modo sin señal, el catálogo y el Worker. Todo lo de internet se simula, así que no gastan Groq.
+
+- **En GitHub** corren solas en cada PR (pestaña *Checks*). Si algo se rompió, aparece una ❌ antes de unir el cambio.
+- **En una computadora:**
+  ```
+  npm install
+  npx playwright install chromium
+  npm test              # todas
+  npm test -- vehiculo  # solo las de un archivo
+  ```
 
 ## Catálogo de vehículos
 
@@ -74,7 +102,7 @@ En el Worker, en **Configuración → Variables y secretos**:
 
 - Para cambiar el código, edita `worker/fc-ocr.js`, pégalo en el editor del Worker y toca **Implementar**.
 - Si cambias la dirección donde se publica la app, actualiza `ORIGENES_PERMITIDOS`.
-- Si Groq retira un modelo, actualiza `OCR_MODELOS` en `js/app.js` y `MODELOS_PERMITIDOS` en el Worker.
+- Si Groq retira un modelo, actualiza `OCR_MODELOS` en `js/ocr.js` y `MODELOS_PERMITIDOS` en el Worker.
 
 ### Mensajes de error del OCR
 
