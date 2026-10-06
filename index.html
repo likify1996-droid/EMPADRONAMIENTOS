@@ -15,14 +15,21 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+<!--
+  Eventos: el HTML no lleva onclick/oninput. Cada elemento declara la función
+  que usa con data-action (clic), data-input, data-change, data-focus o
+  data-blur, y sus argumentos en data-args (JSON). Ver "EVENTOS DE LA
+  INTERFAZ" en js/app.js.
+-->
+
 <!-- SPLASH SCREEN -->
-<div id="splash" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(170deg,#020508,#071428);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s;">
-  <img id="splash-logo" src="" style="width:120px;height:120px;object-fit:contain;filter:drop-shadow(0 0 30px rgba(201,168,76,.6));animation:splashPulse 1.2s ease;">
-  <div style="font-family:'Rajdhani',sans-serif;font-size:1.4rem;font-weight:700;letter-spacing:6px;color:#e8c96a;">FUERZA CIVIL</div>
-  <div style="font-size:.65rem;color:rgba(201,168,76,.5);letter-spacing:4px;">SISTEMA DE EMPADRONAMIENTO</div>
+<div id="splash">
+  <img id="splash-logo" src="icon-logo.png" alt="">
+  <div class="splash-title">FUERZA CIVIL</div>
+  <div class="splash-sub">SISTEMA DE EMPADRONAMIENTO</div>
 </div>
 <header>
-  <div class="header-inner" style="position:relative;">
+  <div class="header-inner">
     <img src="icon-logo.png" class="header-logo" alt="Fuerza Civil">
     <div class="header-text">
       <h1>FUERZA CIVIL</h1>
@@ -30,50 +37,58 @@
       <div class="header-clock" id="header-clock">--:-- | --/--/----</div>
     </div>
   </div>
-  <button id="theme-btn" onclick="toggleTheme()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:linear-gradient(155deg,rgba(201,168,76,.22),rgba(201,168,76,.08));border:1px solid var(--gold);border-radius:50%;width:38px;height:38px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.4,0,.2,1);box-shadow:0 2px 8px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.1);">🌙</button>
-  <div id="conn-indicator" title="Estado de conexión" style="position:absolute;right:54px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);"></div>
-  <button id="compact-btn" onclick="toggleCompact()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:linear-gradient(155deg,rgba(201,168,76,.22),rgba(201,168,76,.08));border:1px solid var(--gold);border-radius:50%;width:38px;height:38px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.4,0,.2,1);box-shadow:0 2px 8px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.1);" title="Modo compacto">📏</button>
-</div>
+  <button id="theme-btn" class="hdr-btn" data-action="toggleTheme">🌙</button>
+  <div id="conn-indicator" title="Estado de conexión"></div>
+  <button id="compact-btn" class="hdr-btn" data-action="toggleCompact" title="Modo compacto">📏</button>
 </header>
 <div class="container">
+
+<!-- AVISO DE VERSIÓN NUEVA -->
+<div id="update-banner" class="banner banner--update hidden">
+  <span>🔄 Hay una versión nueva de la app</span>
+  <button type="button" class="banner-btn" data-action="aplicarActualizacion">Actualizar</button>
+</div>
 
 <!-- SISTEMA DE PESTAÑAS -->
 <div class="tabs-panel" id="tabs-panel">
   <div class="tabs-container" id="tabs-container">
     <!-- pestañas se generan dinámicamente -->
-    <button class="tab-add" id="tab-add-btn" onclick="addTab()" title="Otra persona en el mismo lugar (hereda lugar, motivo y categoría)">＋</button>
+    <button class="tab-add" id="tab-add-btn" data-action="addTab" title="Otra persona en el mismo lugar (hereda lugar, motivo y categoría)">＋</button>
   </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px 2px;">
-    <label style="display:flex;align-items:center;gap:6px;font-size:.66rem;color:var(--muted);cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:400;"><input type="checkbox" class="tab-inherit-cb" checked onchange="saveInheritPref(this)" style="width:auto;margin:0;padding:0;"> Pestaña nueva hereda lugar, motivo y categoría</label>
-    <button type="button" onclick="cerrarTodasLasPestanas()" style="background:transparent;border:1px solid var(--danger);border-radius:4px;color:var(--danger);font-size:.65rem;padding:3px 8px;cursor:pointer;">🧹 Cerrar todas</button>
-  </div>
-</div>
-<button class="tab-gen-all" id="tab-gen-all" onclick="generarTodosCompletos()">⚡ GENERAR COMPLETOS → LOTE</button>
-
-<div id="install-banner" style="display:none;background:linear-gradient(135deg,rgba(201,168,76,.1),rgba(26,143,255,.08));border:1px solid var(--gold);border-radius:10px;padding:10px 14px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:10px;">
-  <span style="font-size:.78rem;color:var(--text2);">📲 Instala la app para usarla sin conexión</span>
-  <button id="btn-install" style="background:var(--gold);color:#06090f;border:none;border-radius:6px;padding:7px 14px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap;">Instalar</button>
-</div>
-
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-    <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Progreso del formulario</span>
-    <span id="progress-pct" style="font-size:.8rem;color:var(--gold2);font-weight:600;">0%</span>
-  </div>
-  <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
-    <div id="progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent2),var(--gold));border-radius:3px;transition:width .4s;"></div>
+  <div class="tabs-tools">
+    <label class="tabs-inherit"><input type="checkbox" class="tab-inherit-cb" checked data-change="saveInheritPref" data-args='["$el"]'> Pestaña nueva hereda lugar, motivo y categoría</label>
+    <div class="row">
+      <button type="button" class="mini-btn mini-btn--danger" data-action="cerrarTodasLasPestanas">🧹 Cerrar todas</button>
+      <button type="button" class="mini-btn mini-btn--danger" data-action="terminarTurno" title="Borra pestañas, lote y documentos pendientes de este teléfono">🔒 Terminar turno</button>
+    </div>
   </div>
 </div>
+<button class="tab-gen-all" id="tab-gen-all" data-action="generarTodosCompletos">⚡ GENERAR COMPLETOS → LOTE</button>
 
-<button class="btn-generate" style="background:linear-gradient(135deg,#006633,#00cc66);margin-bottom:14px;" onclick="nuevoEmpadronamiento()">🔄 NUEVO EMPADRONAMIENTO</button>
+<div id="install-banner" class="banner banner--install hidden">
+  <span>📲 Instala la app para usarla sin conexión</span>
+  <button id="btn-install" class="banner-btn">Instalar</button>
+</div>
+
+<div class="progress-card">
+  <div class="row-between progress-head">
+    <span class="progress-label">Progreso del formulario</span>
+    <span id="progress-pct">0%</span>
+  </div>
+  <div class="progress-track">
+    <div id="progress-fill"></div>
+  </div>
+</div>
+
+<button class="btn-generate btn-generate--nuevo" data-action="nuevoEmpadronamiento">🔄 NUEVO EMPADRONAMIENTO</button>
 
 <!-- NÚMERO DE EMPADRONAMIENTO -->
-<div class="section" style="border-left-color:var(--accent);">
+<div class="section section--num">
   <div class="section-title">🔢 Número de Empadronamiento</div>
   <div class="fields">
     <div class="field">
       <label>No. Empadronamiento (aparece en el encabezado como #número)</label>
-      <input type="text" id="num_emp" placeholder="001" style="font-size:1.1rem;font-weight:600;letter-spacing:2px;" oninput="savePolicia()">
+      <input type="text" id="num_emp" class="input-num" placeholder="001" data-input="savePolicia">
     </div>
   </div>
 </div>
@@ -81,53 +96,66 @@
 <!-- SCANNER — OCR -->
 <div class="scan-box">
   <h3>📷 ESCANEAR DOCUMENTO CON IA</h3>
-  <div style="font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:10px;">Toma foto de INE o tarjeta de circulación</div>
+  <div class="scan-hint">Toma foto de INE o tarjeta de circulación</div>
   <div class="scan-btns">
-    <button class="btn-scan" id="btn-abrir-camara" onclick="startOCR()">📸 Cámara</button>
-    <button class="btn-scan" onclick="document.getElementById('gallery-input').click()">🖼 Galería</button>
-    <button class="btn-scan" id="btn-releer" onclick="startOCR()" style="display:none;">🔄 Releer</button>
+    <button class="btn-scan" id="btn-abrir-camara" data-action="startOCR">📸 Cámara</button>
+    <button class="btn-scan" data-action="abrirGaleria">🖼 Galería</button>
+    <button class="btn-scan hidden" id="btn-releer" data-action="startOCR">🔄 Releer</button>
   </div>
-  <input type="file" id="gallery-input" accept="image/*" multiple style="display:none;" onchange="processGalleryImages(this)">
-  <div id="scan-status" style="font-size:.75rem;color:var(--muted);margin-top:8px;text-align:center;min-height:16px;"></div>
-  <div id="img-quality" style="display:none;margin-top:6px;text-align:center;font-size:.75rem;"></div>
-  <div id="ocr-progress-bar" style="display:none;height:5px;background:var(--border);border-radius:3px;margin-top:8px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.2);">
-    <div id="ocr-progress-fill" class="shimmer" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent2),var(--accent),var(--gold));border-radius:3px;transition:width .3s;"></div>
+  <input type="file" id="gallery-input" class="hidden" accept="image/*" multiple data-change="processGalleryImages" data-args='["$el"]'>
+  <div id="ocr-pendientes" class="ocr-pendientes hidden">
+    <span id="ocr-pendientes-txt"></span>
+    <div class="row">
+      <button type="button" class="mini-btn mini-btn--accent" data-action="procesarOcrPendientes">▶ Leer ahora</button>
+      <button type="button" class="mini-btn mini-btn--danger" data-action="descartarOcrPendientes">🗑</button>
+    </div>
+  </div>
+  <div id="scan-status"></div>
+  <div id="img-quality" class="hidden"></div>
+  <div id="ocr-progress-bar" class="hidden">
+    <div id="ocr-progress-fill" class="shimmer"></div>
   </div>
   <!-- Preview foto capturada -->
-  <div id="ocr-preview" style="display:none;margin-top:10px;position:relative;">
-    <img id="ocr-preview-img" style="width:100%;border-radius:8px;border:2px solid var(--green);max-height:200px;object-fit:contain;background:#000;">
-    <div id="ocr-preview-label" style="position:absolute;bottom:6px;left:6px;background:rgba(0,0,0,.7);color:#fff;font-size:.7rem;padding:3px 8px;border-radius:4px;">Vista previa</div>
+  <div id="ocr-preview" class="hidden">
+    <img id="ocr-preview-img" alt="">
+    <div id="ocr-preview-label">Vista previa</div>
   </div>
-  <div id="ocr-summary" style="display:none;margin-top:8px;background:rgba(0,184,86,.1);border:1px solid var(--green);border-radius:6px;padding:8px 10px;font-size:.75rem;color:var(--green);"></div>
-  <div id="ocr-container" style="display:none;margin-top:10px;">
-    <video id="ocr-video" playsinline muted style="width:100%;border-radius:8px;border:2px solid var(--accent);max-height:300px;object-fit:cover;display:block;"></video>
-    <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
-      <button onclick="zoomOCR(-1)" style="padding:10px 13px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:1rem;cursor:pointer;">−</button>
-      <button onclick="zoomOCR(1)" style="padding:10px 13px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:1rem;cursor:pointer;">+</button>
-      <button id="torch-btn" onclick="toggleTorch()" style="padding:10px 13px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:1rem;cursor:pointer;">🔦</button>
-      <button onclick="captureOCR()" style="flex:1;padding:10px;background:var(--accent2);border:none;border-radius:6px;color:#fff;font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:600;letter-spacing:1px;cursor:pointer;">📸 Capturar</button>
-      <button onclick="stopOCR()" style="padding:10px 14px;background:rgba(224,48,80,.2);border:1px solid var(--danger);border-radius:6px;color:var(--danger);font-size:.85rem;cursor:pointer;">✕</button>
+  <div id="ocr-summary" class="hidden"></div>
+  <div id="ocr-container" class="hidden">
+    <video id="ocr-video" playsinline muted></video>
+    <div class="ocr-controls">
+      <button class="ocr-btn" data-action="zoomOCR" data-args="[-1]">−</button>
+      <button class="ocr-btn" data-action="zoomOCR" data-args="[1]">+</button>
+      <button class="ocr-btn" id="torch-btn" data-action="toggleTorch">🔦</button>
+      <button class="ocr-btn ocr-btn--capturar" data-action="captureOCR">📸 Capturar</button>
+      <button class="ocr-btn ocr-btn--cerrar" data-action="stopOCR">✕</button>
     </div>
-    <canvas id="ocr-canvas" style="display:none;"></canvas>
+    <canvas id="ocr-canvas" class="hidden"></canvas>
   </div>
 </div>
 
 <!-- SERVICIO -->
-<div class="section" style="border-left:3px solid #1a8fff;">
-  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+<div class="section section--servicio">
+  <div class="section-title">
     <span><span class="section-num">01</span>📋 Datos del Servicio</span>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;"><span id="save-indicator" style="font-size:.65rem;color:var(--green);display:none;">💾 Guardado</span><button onclick="exportarDatosPolicia()" title="Exportar configuración" style="background:transparent;border:1px solid var(--accent2);border-radius:4px;color:var(--accent);font-size:.65rem;padding:3px 7px;cursor:pointer;">⬇ Exportar</button><button onclick="document.getElementById('import-policia-input').click()" title="Importar configuración" style="background:transparent;border:1px solid var(--accent2);border-radius:4px;color:var(--accent);font-size:.65rem;padding:3px 7px;cursor:pointer;">⬆ Importar</button><input type="file" id="import-policia-input" accept=".json" style="display:none;" onchange="importarDatosPolicia(this)"><button onclick="borrarDatosPolicía()" style="background:transparent;border:1px solid var(--danger);border-radius:4px;color:var(--danger);font-size:.65rem;padding:3px 7px;cursor:pointer;">🗑 Borrar config</button></div>
+    <div class="row wrap row-end">
+      <span id="save-indicator" class="hidden">💾 Guardado</span>
+      <button class="mini-btn mini-btn--accent" data-action="exportarDatosPolicia" title="Exportar configuración">⬇ Exportar</button>
+      <button class="mini-btn mini-btn--accent" data-action="abrirImportPolicia" title="Importar configuración">⬆ Importar</button>
+      <input type="file" id="import-policia-input" class="hidden" accept=".json" data-change="importarDatosPolicia" data-args='["$el"]'>
+      <button class="mini-btn mini-btn--danger" data-action="borrarDatosPolicía">🗑 Borrar config</button>
+    </div>
   </div>
   <div class="fields">
     <div class="field-row">
-      <div class="field"><label>Zona de Responsabilidad <span style="color:var(--danger)">*</span></label><input type="text" id="zona" placeholder="D1 C7" oninput="savePolicia()"></div>
-      <div class="field"><label>N.E <span style="color:var(--danger)">*</span></label><input type="text" id="ne" placeholder="840951" oninput="savePolicia()"></div>
+      <div class="field"><label>Zona de Responsabilidad <span class="req">*</span></label><input type="text" id="zona" placeholder="D1 C7" data-input="savePolicia"></div>
+      <div class="field"><label>N.E <span class="req">*</span></label><input type="text" id="ne" placeholder="840951" data-input="savePolicia"></div>
     </div>
-    <div class="field"><label>Nombre del Policía <span style="color:var(--danger)">*</span></label><input type="text" id="nombre_pol" placeholder="Pol. 3° Apellido Nombre" oninput="savePolicia()"></div>
+    <div class="field"><label>Nombre del Policía <span class="req">*</span></label><input type="text" id="nombre_pol" placeholder="Pol. 3° Apellido Nombre" data-input="savePolicia"></div>
     <div class="field-row">
       <div class="field">
-        <label>Categoría <span style="color:var(--danger)">*</span></label>
-        <select id="categoria" onchange="updateSubcat()">
+        <label>Categoría <span class="req">*</span></label>
+        <select id="categoria" data-change="updateSubcat">
           <option value="">-- Seleccionar --</option>
           <option>Entretenimiento</option><option>Comercio</option><option>Transporte</option>
           <option>Seguridad</option><option>Sectores Vulnerables</option><option>General</option>
@@ -135,70 +163,70 @@
       </div>
       <div class="field">
         <label>Subcategoría</label>
-        <select id="subcategoria" onchange="checkOtroSubcat()"><option value="">-- Primero categoría --</option></select>
+        <select id="subcategoria" data-change="checkOtroSubcat"><option value="">-- Primero categoría --</option></select>
       </div>
     </div>
-    <div class="field" id="otro_subcat_field" style="display:none;">
+    <div class="field hidden" id="otro_subcat_field">
       <label>Especificar subcategoría</label>
       <input type="text" id="otro_subcat" placeholder="Describe la subcategoría...">
     </div>
     <!-- DIRECCIÓN LUGAR DE HECHOS -->
-    <div class="field" style="margin-bottom:2px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+    <div class="field field--tight">
+      <div class="row-between wrap">
         <label>Lugar de los Hechos</label>
-        <div style="display:flex;gap:6px;">
-          <button onclick="geoLocate()" style="background:rgba(0,198,255,.2);border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:.65rem;padding:3px 8px;cursor:pointer;font-family:'Exo 2',sans-serif;">📍 Mi ubicación</button>
-          <button onclick="abrirMapaPin()" style="background:rgba(201,168,76,.15);border:1px solid var(--gold);border-radius:4px;color:var(--gold2);font-size:.65rem;padding:3px 8px;cursor:pointer;font-family:'Exo 2',sans-serif;">📌 Marcar en mapa</button>
+        <div class="row">
+          <button class="mini-btn mini-btn--accent-fill" data-action="geoLocate">📍 Mi ubicación</button>
+          <button class="mini-btn mini-btn--gold" data-action="abrirMapaPin">📌 Marcar en mapa</button>
         </div>
       </div>
     </div>
-    <div class="field" style="position:relative;margin-bottom:6px;">
-      <div style="display:flex;gap:6px;align-items:center;">
-        <input type="text" id="lugar_busq" placeholder="🔍 Buscar calle, colonia, negocio o lugar..." autocomplete="off" oninput="buscarLugar(this.value)" style="flex:1;">
-        <button type="button" class="gkey-btn" onclick="configurarGoogleKey()" style="flex-shrink:0;font-size:.65rem;background:transparent;border:1px solid var(--accent2);border-radius:4px;color:var(--accent);padding:6px 8px;cursor:pointer;">🔑 Google</button>
+    <div class="field field--rel field--lugar">
+      <div class="row">
+        <input type="text" id="lugar_busq" class="grow" placeholder="🔍 Buscar calle, colonia, negocio o lugar..." autocomplete="off" data-input="buscarLugar" data-args='["$value"]'>
+        <button type="button" class="gkey-btn mini-btn mini-btn--accent mini-btn--tall" data-action="configurarGoogleKey">🔑 Google</button>
       </div>
-      <div id="lugar-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1.5px solid var(--accent);border-top:none;border-radius:0 0 8px 8px;z-index:500;max-height:230px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
+      <div id="lugar-suggestions" class="suggestions hidden"></div>
     </div>
-    <div class="fields" style="padding:0;gap:8px;">
+    <div class="fields fields--addr">
       <div class="field-row">
-        <div class="field"><label>Calle</label><input type="text" id="addr_calle" placeholder="Puerto de Alvarado" oninput="buildAddr()"></div>
-        <div class="field"><label>Cruce con <span style="color:var(--danger)">*</span></label><input type="text" id="addr_cruce" placeholder="C. Puerto Marqués" oninput="buildAddr()"></div>
+        <div class="field"><label>Calle</label><input type="text" id="addr_calle" placeholder="Puerto de Alvarado" data-input="buildAddr"></div>
+        <div class="field"><label>Cruce con <span class="req">*</span></label><input type="text" id="addr_cruce" placeholder="C. Puerto Marqués" data-input="buildAddr"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Colonia</label><input type="text" id="addr_colonia" placeholder="Las Brisas 7o. Sector" oninput="buildAddr()"></div>
-        <div class="field"><label>C.P.</label><input type="text" id="addr_cp" placeholder="64790" inputmode="numeric" maxlength="5" oninput="buildAddr()"></div>
+        <div class="field"><label>Colonia</label><input type="text" id="addr_colonia" placeholder="Las Brisas 7o. Sector" data-input="buildAddr"></div>
+        <div class="field"><label>C.P.</label><input type="text" id="addr_cp" placeholder="64790" inputmode="numeric" maxlength="5" data-input="buildAddr"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Municipio</label><input type="text" id="addr_municipio" placeholder="Monterrey" oninput="buildAddr()"></div>
-        <div class="field"><label>Estado (fijo)</label><input type="text" id="addr_estado" value="N.L." readonly style="color:var(--muted);"></div>
+        <div class="field"><label>Municipio</label><input type="text" id="addr_municipio" placeholder="Monterrey" data-input="buildAddr"></div>
+        <div class="field"><label>Estado (fijo)</label><input type="text" id="addr_estado" class="input-muted" value="N.L." readonly></div>
       </div>
       <div class="addr-preview" id="addr-preview">La dirección aparecerá aquí...</div>
     </div>
-    <div class="field" style="margin-top:6px;">
-      <label style="color:var(--accent);">— ó pegar directo —</label>
-      <textarea id="addr_texto" placeholder="Pega aquí la dirección completa&#10;Ej: Puerto de Alvarado cruce con C. Puerto Marqués, Las Brisas 7o. Sector, 64790 Monterrey, N.L." style="min-height:60px;" oninput="onAddrTexto()"></textarea>
+    <div class="field field--mt6">
+      <label class="label-accent">— ó pegar directo —</label>
+      <textarea id="addr_texto" class="textarea-sm" placeholder="Pega aquí la dirección completa&#10;Ej: Puerto de Alvarado cruce con C. Puerto Marqués, Las Brisas 7o. Sector, 64790 Monterrey, N.L." data-input="onAddrTexto"></textarea>
     </div>
-    <div id="geo-status" style="font-size:.7rem;color:var(--accent);text-align:center;display:none;"></div>
+    <div id="geo-status" class="hidden"></div>
     <div class="field-row">
       <div class="field"><label>Fecha</label><input type="date" id="fecha"></div>
-      <div class="field"><label>Hora (24h)</label><input type="text" id="hora" placeholder="14:30" maxlength="5" inputmode="numeric" oninput="fmtHoraInput(this)"></div>
+      <div class="field"><label>Hora (24h)</label><input type="text" id="hora" placeholder="14:30" maxlength="5" inputmode="numeric" data-input="fmtHoraInput" data-args='["$el"]'></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Folio C5</label><input type="text" id="folio"></div>
-      <div class="field"><label>CRP</label><input type="text" id="crp" placeholder="FC368A2" oninput="savePolicia()"></div>
+      <div class="field"><label>CRP</label><input type="text" id="crp" placeholder="FC368A2" data-input="savePolicia"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Número de BODYCAM</label><input type="text" id="bodycam"></div>
-      <div class="field"><label>Motivo del Empadronamiento <span style="color:var(--danger)">*</span></label><select id="motivo_sel" onchange="motivoSelChange()"><option value="">-- Seleccionar --</option><option value="Prevención del delito">Prevención del delito</option><option value="Vigilancia y seguridad pública">Vigilancia y seguridad pública</option><option value="Actitud o conducta sospechosa">Actitud o conducta sospechosa</option><option value="Reporte ciudadano">Reporte ciudadano</option><option value="Operativo de seguridad">Operativo de seguridad</option><option value="Verificación de identidad">Verificación de identidad</option><option value="Falta administrativa">Falta administrativa</option><option value="Alteración del orden público">Alteración del orden público</option><option value="Punto de revisión">Punto de revisión</option><option value="Apoyo a otra corporación">Apoyo a otra corporación</option><option value="Atención a grupo vulnerable">Atención a grupo vulnerable</option><option value="Merodeo">Merodeo</option><option value="__otro">Otro (especificar)…</option></select><input type="text" id="motivo" placeholder="Escribe el motivo..." style="display:none;margin-top:6px;"></div>
+      <div class="field"><label>Motivo del Empadronamiento <span class="req">*</span></label><select id="motivo_sel" data-change="motivoSelChange"><option value="">-- Seleccionar --</option><option value="Prevención del delito">Prevención del delito</option><option value="Vigilancia y seguridad pública">Vigilancia y seguridad pública</option><option value="Actitud o conducta sospechosa">Actitud o conducta sospechosa</option><option value="Reporte ciudadano">Reporte ciudadano</option><option value="Operativo de seguridad">Operativo de seguridad</option><option value="Verificación de identidad">Verificación de identidad</option><option value="Falta administrativa">Falta administrativa</option><option value="Alteración del orden público">Alteración del orden público</option><option value="Punto de revisión">Punto de revisión</option><option value="Apoyo a otra corporación">Apoyo a otra corporación</option><option value="Atención a grupo vulnerable">Atención a grupo vulnerable</option><option value="Merodeo">Merodeo</option><option value="__otro">Otro (especificar)…</option></select><input type="text" id="motivo" class="hidden input-mt6" placeholder="Escribe el motivo..."></div>
     </div>
   </div>
 </div>
 
 <!-- PERSONA -->
-<div class="section" style="border-left:3px solid #00b856;">
-  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleSection('persona-body')">
-    <span><span class="section-num">02</span>👤 Persona <span id="persona-arrow" style="font-size:.7rem;transition:transform .2s;">▼</span></span>
-    <button class="btn-sec-clear" onclick="limpiarSeccion('persona')">🗑 Limpiar</button>
+<div class="section section--persona">
+  <div class="section-title section-title--toggle" data-action="toggleSection" data-args='["persona-body"]'>
+    <span><span class="section-num">02</span>👤 Persona <span id="persona-arrow" class="section-arrow">▼</span></span>
+    <button class="btn-sec-clear" data-action="limpiarSeccion" data-args='["persona"]'>🗑 Limpiar</button>
   </div>
   <div id="persona-body" class="section-body">
   <div class="fields">
@@ -206,18 +234,18 @@
       <div class="field"><label>Sector Vulnerable</label><select id="vulnerable"><option value="No">No</option><option value="Sí">Sí</option></select></div>
       <div class="field"><label>Sexo</label><select id="sexo"><option>Masculino</option><option>Femenino</option></select></div>
     </div>
-    <div class="field"><label>Nombre Completo <span style="color:var(--danger)">*</span></label><input type="text" id="nombre" placeholder="Apellido Apellido Nombre"></div>
+    <div class="field"><label>Nombre Completo <span class="req">*</span></label><input type="text" id="nombre" placeholder="Apellido Apellido Nombre"></div>
     <div class="field">
       <label>CURP</label>
-      <input type="text" id="curp" placeholder="AAAA000000HAAAAA00" maxlength="18" style="text-transform:uppercase;letter-spacing:.5px;" oninput="onCurpInput(this)">
-      <div id="curp-status" style="font-size:.68rem;margin-top:3px;min-height:14px;"></div>
+      <input type="text" id="curp" class="input-curp" placeholder="AAAA000000HAAAAA00" maxlength="18" data-input="onCurpInput" data-args='["$el"]'>
+      <div id="curp-status"></div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Fecha de Nacimiento (DD/MM/AAAA) <span style="color:var(--danger)">*</span></label>
-        <input type="text" id="nacimiento" placeholder="11/09/1996" maxlength="10" oninput="fmtNacInput(this)" onblur="calcEdad()">
+        <label>Fecha de Nacimiento (DD/MM/AAAA) <span class="req">*</span></label>
+        <input type="text" id="nacimiento" placeholder="11/09/1996" maxlength="10" data-input="fmtNacInput" data-args='["$el"]' data-blur="calcEdad">
       </div>
-      <div class="field"><label>Edad <span style="color:var(--danger)">*</span></label><input type="number" id="edad" placeholder="28" inputmode="numeric"></div>
+      <div class="field"><label>Edad <span class="req">*</span></label><input type="number" id="edad" placeholder="28" inputmode="numeric"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Estatura (metros)</label><input type="text" id="estatura" placeholder="1.65"></div>
@@ -227,33 +255,33 @@
       <div class="field"><label>Alias</label><input type="text" id="alias" placeholder="N/A"></div>
       <div class="field"><label>Redes Sociales</label><input type="text" id="redes" placeholder="No proporciona"></div>
     </div>
-    <div class="field" style="position:relative;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <label>Domicilio <span style="color:var(--danger)">*</span></label>
-        <div style="display:flex;gap:5px;"><button type="button" class="gkey-btn" onclick="configurarGoogleKey()" style="font-size:.65rem;background:transparent;border:1px solid var(--accent2);border-radius:4px;color:var(--accent);padding:2px 7px;cursor:pointer;">🔑 Google</button><button type="button" onclick="copiarLugarADomicilio()" style="font-size:.65rem;background:rgba(26,143,255,.15);border:1px solid var(--accent2);border-radius:4px;color:var(--accent);padding:2px 7px;cursor:pointer;">📍 Igual al lugar</button></div>
+    <div class="field field--rel">
+      <div class="row-between">
+        <label>Domicilio <span class="req">*</span></label>
+        <div class="row"><button type="button" class="gkey-btn mini-btn mini-btn--accent" data-action="configurarGoogleKey">🔑 Google</button><button type="button" class="mini-btn mini-btn--accent-soft" data-action="copiarLugarADomicilio">📍 Igual al lugar</button></div>
       </div>
-      <textarea id="domicilio" placeholder="Calle, colonia, municipio..." oninput="buscarDomicilio(this.value)" autocomplete="off" rows="2"></textarea>
-      <div id="domicilio-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1.5px solid var(--accent);border-top:none;border-radius:0 0 8px 8px;z-index:500;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
+      <textarea id="domicilio" placeholder="Calle, colonia, municipio..." data-input="buscarDomicilio" data-args='["$value"]' autocomplete="off" rows="2"></textarea>
+      <div id="domicilio-suggestions" class="suggestions suggestions--short hidden"></div>
     </div>
-    <div class="field" style="position:relative">
+    <div class="field field--rel">
       <label>Estado de Origen</label>
-      <input type="text" id="estado_origen" placeholder="Nuevo León" autocomplete="off" oninput="acFilter('estado_origen','ac_edo_origen',ESTADOS)">
+      <input type="text" id="estado_origen" placeholder="Nuevo León" autocomplete="off" data-input="acFilter" data-args='["estado_origen","ac_edo_origen","ESTADOS"]'>
       <div class="autocomplete-list" id="ac_edo_origen"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Estado Civil</label><select id="estado_civil"><option>Soltero</option><option>Casado</option><option>Divorciado</option><option>Viudo</option><option>Unión Libre</option></select></div>
-      <div class="field"><label>Escolaridad <span style="color:var(--danger)">*</span></label>
-        <select id="escolaridad" onchange="checkEscolaridad()">
+      <div class="field"><label>Escolaridad <span class="req">*</span></label>
+        <select id="escolaridad" data-change="checkEscolaridad">
           <option>Sin escolaridad</option><option>Primaria</option><option>Secundaria</option>
           <option>Preparatoria</option><option>Técnico</option><option>Universidad</option><option>Posgrado</option>
         </select>
       </div>
     </div>
-    <div class="field" id="escolaridad_extra" style="display:none;">
+    <div class="field hidden" id="escolaridad_extra">
       <label id="escolaridad_extra_label">Carrera / Área</label>
       <input type="text" id="escolaridad_detalle" placeholder="Ej: Ingeniería en Sistemas">
     </div>
-    <div class="field"><label>Oficio / Profesión <span style="color:var(--danger)">*</span></label><input type="text" id="oficio" placeholder="Repartidor"></div>
+    <div class="field"><label>Oficio / Profesión <span class="req">*</span></label><input type="text" id="oficio" placeholder="Repartidor"></div>
     <div class="field"><label>Datos del Padre</label><input type="text" id="padre"></div>
     <div class="field"><label>Datos de la Madre</label><input type="text" id="madre"></div>
     <div class="field-row">
@@ -264,36 +292,36 @@
     <!-- FOTOS DE PERFIL -->
     <div class="field">
       <label>Fotografías de Perfil</label>
-      <div style="display:flex;gap:8px;margin-top:2px;">
-        <button type="button" id="fotos_si" onclick="setFotos('si')" style="flex:1;padding:9px;background:rgba(0,204,102,.15);border:1px solid var(--green);border-radius:6px;color:var(--green);font-family:'Exo 2',sans-serif;font-size:.88rem;cursor:pointer;transition:all .2s;">✅ Sí</button>
-        <button type="button" id="fotos_no" onclick="setFotos('no')" style="flex:1;padding:9px;background:rgba(255,64,96,.1);border:1px solid var(--danger);border-radius:6px;color:var(--danger);font-family:'Exo 2',sans-serif;font-size:.88rem;cursor:pointer;transition:all .2s;">❌ No</button>
+      <div class="row fotos-row">
+        <button type="button" id="fotos_si" class="fotos-btn fotos-btn--si" data-action="setFotos" data-args='["si"]'>✅ Sí</button>
+        <button type="button" id="fotos_no" class="fotos-btn fotos-btn--no" data-action="setFotos" data-args='["no"]'>❌ No</button>
       </div>
       <input type="hidden" id="fotos_perfil" value="">
     </div>
     <div class="field">
       <label>Datos Adicionales</label>
-      <div style="font-size:.62rem;color:var(--muted);margin-bottom:4px;letter-spacing:.5px;">SE NIEGA A... (toca para activar, se combinan en una frase)</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">
-        <button type="button" onclick="toggleNegativa(this,'tomarse fotografías')" class="btn-frase neg-btn">📷 Fotografías</button>
-        <button type="button" onclick="toggleNegativa(this,'proporcionar el nombre de sus padres')" class="btn-frase neg-btn">👪 Nombre de padres</button>
-        <button type="button" onclick="toggleNegativa(this,'proporcionar su número telefónico')" class="btn-frase neg-btn">📞 Teléfono</button>
-        <button type="button" onclick="toggleNegativa(this,'proporcionar sus redes sociales')" class="btn-frase neg-btn">🌐 Redes sociales</button>
-        <button type="button" onclick="toggleNegativa(this,'identificarse')" class="btn-frase neg-btn">🚫 Identificarse</button>
+      <div class="hint-caps">SE NIEGA A... (toca para activar, se combinan en una frase)</div>
+      <div class="chips">
+        <button type="button" class="btn-frase neg-btn" data-action="toggleNegativa" data-args='["$el","tomarse fotografías"]'>📷 Fotografías</button>
+        <button type="button" class="btn-frase neg-btn" data-action="toggleNegativa" data-args='["$el","proporcionar el nombre de sus padres"]'>👪 Nombre de padres</button>
+        <button type="button" class="btn-frase neg-btn" data-action="toggleNegativa" data-args='["$el","proporcionar su número telefónico"]'>📞 Teléfono</button>
+        <button type="button" class="btn-frase neg-btn" data-action="toggleNegativa" data-args='["$el","proporcionar sus redes sociales"]'>🌐 Redes sociales</button>
+        <button type="button" class="btn-frase neg-btn" data-action="toggleNegativa" data-args='["$el","identificarse"]'>🚫 Identificarse</button>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">
-        <button type="button" onclick="addFrase('adicionales','No porta identificación.')" class="btn-frase">🆔 No porta identificación</button>
+      <div class="chips">
+        <button type="button" class="btn-frase" data-action="addFrase" data-args='["adicionales","No porta identificación."]'>🆔 No porta identificación</button>
       </div>
-      <textarea id="adicionales" placeholder="Escribe aquí o usa los botones de arriba..." oninput="onObsManual('adicionales')"></textarea>
+      <textarea id="adicionales" placeholder="Escribe aquí o usa los botones de arriba..." data-input="onObsManual" data-args='["adicionales"]'></textarea>
     </div>
   </div>
   </div>
 </div>
 
 <!-- TATUAJES -->
-<div class="section" style="border-left:3px solid #9b59b6;">
-  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleSection('tatuajes-body')">
-    <span><span class="section-num">03</span>🖋 Tatuajes <span id="tatuajes-arrow" style="font-size:.7rem;transition:transform .2s;">▼</span></span>
-    <button class="btn-sec-clear" onclick="limpiarSeccion('tatuajes')">🗑 Limpiar</button>
+<div class="section section--tatuajes">
+  <div class="section-title section-title--toggle" data-action="toggleSection" data-args='["tatuajes-body"]'>
+    <span><span class="section-num">03</span>🖋 Tatuajes <span id="tatuajes-arrow" class="section-arrow">▼</span></span>
+    <button class="btn-sec-clear" data-action="limpiarSeccion" data-args='["tatuajes"]'>🗑 Limpiar</button>
   </div>
   <div id="tatuajes-body" class="section-body">
   <div class="fields">
@@ -303,115 +331,45 @@
     </div>
     <div class="field">
       <label>Descripción (escribe o pega directamente)</label>
-      <textarea id="tatuajes_desc" placeholder="Descripción detallada de los tatuajes..." style="min-height:80px;"></textarea>
+      <textarea id="tatuajes_desc" class="textarea-md" placeholder="Descripción detallada de los tatuajes..."></textarea>
     </div>
-    <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px;">
-      <label style="color:var(--accent);font-size:.68rem;letter-spacing:1.5px;">— Ó PEGAR BLOQUE COMPLETO —</label>
-      <textarea id="tatuajes_bloque" placeholder="Pega aquí el bloque completo:&#10;Cantidad de tatuajes: 6&#10;En qué área del cuerpo: Brazo...&#10;Descripción de los tatuajes:&#10;1. Brazo..." style="min-height:90px;margin-top:6px;font-size:.75rem;font-family:monospace;" oninput="parseTatuajesBloque()"></textarea>
+    <div class="tatuajes-bloque">
+      <label class="label-accent label-wide">— Ó PEGAR BLOQUE COMPLETO —</label>
+      <textarea id="tatuajes_bloque" class="textarea-mono" placeholder="Pega aquí el bloque completo:&#10;Cantidad de tatuajes: 6&#10;En qué área del cuerpo: Brazo...&#10;Descripción de los tatuajes:&#10;1. Brazo..." data-input="parseTatuajesBloque"></textarea>
     </div>
   </div>
   </div>
 </div>
 
 <!-- VEHÍCULO -->
-<div class="section" style="border-left:3px solid #e67e22;">
-  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleSection('vehiculo-body')">
-    <span><span class="section-num">04</span>🚗 Vehículo <span id="vehiculo-arrow" style="font-size:.7rem;transition:transform .2s;">▼</span></span>
-    <button class="btn-sec-clear" onclick="limpiarSeccion('vehiculo')">🗑 Limpiar</button>
+<div class="section section--vehiculo">
+  <div class="section-title section-title--toggle" data-action="toggleSection" data-args='["vehiculo-body"]'>
+    <span><span class="section-num">04</span>🚗 Vehículo <span id="vehiculo-arrow" class="section-arrow">▼</span></span>
+    <button class="btn-sec-clear" data-action="limpiarSeccion" data-args='["vehiculo"]'>🗑 Limpiar</button>
   </div>
+  <div id="vehiculo-body" class="section-body">
   <div class="fields">
     <div class="field-row">
       <div class="field">
         <label>Tipo de Vehículo</label>
-        <div style="position:relative;">
-          <input type="text" id="tipo_vehiculo_search" placeholder="Buscar tipo..." autocomplete="off" oninput="filterSelect('tipo_vehiculo','tipo_vehiculo_search')" onfocus="document.getElementById('tipo_vehiculo_dropdown').style.display='block'" style="margin-bottom:4px;">
-          <div id="tipo_vehiculo_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1.5px solid var(--accent);border-radius:0 0 7px 7px;z-index:500;max-height:260px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);">
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Motocicleta')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 64 32" width="48" height="24"><circle cx="12" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="52" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M12 24 L20 12 L32 12 L38 20 L52 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M32 12 L36 6 L44 6 L46 12" fill="none" stroke="currentColor" stroke-width="2"/><path d="M38 20 L42 14" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
-              <span style="font-size:.92rem;">Motocicleta</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Bicicleta')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 64 32" width="48" height="24"><circle cx="14" cy="22" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="50" cy="22" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M14 22 L28 10 L50 22" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M28 10 L32 22" stroke="currentColor" stroke-width="2"/><path d="M24 10 L36 10" stroke="currentColor" stroke-width="2.5"/><path d="M28 6 L28 10" stroke="currentColor" stroke-width="2"/></svg></span>
-              <span style="font-size:.92rem;">Bicicleta</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Monopatín / Scooter eléctrico')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 64 36" width="48" height="27"><circle cx="10" cy="30" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="54" cy="30" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M10 30 L10 8 L16 8 L16 4 L22 4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M10 25 L54 25 L54 30" fill="none" stroke="currentColor" stroke-width="2.5"/><rect x="30" y="14" width="18" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
-              <span style="font-size:.92rem;">Monopatín / Scooter eléctrico</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Sedán')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 80 36" width="56" height="27"><path d="M8 24 L8 18 L20 10 L56 10 L72 18 L72 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 10 L26 4 L52 4 L58 10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="60" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="25" y1="24" x2="55" y2="24" stroke="currentColor" stroke-width="1.5"/></svg></span>
-              <span style="font-size:.92rem;">Sedán</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Hatchback')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 80 36" width="56" height="27"><path d="M8 24 L8 18 L18 10 L62 10 L72 18 L72 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M18 10 L20 4 L62 4 L62 10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="60" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Hatchback</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Coupé')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 80 36" width="56" height="27"><path d="M6 24 L8 18 L22 8 L58 8 L72 18 L72 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M24 8 L30 3 L56 3 L60 8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="60" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Coupé</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Pick up')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 88 36" width="60" height="27"><path d="M6 24 L6 16 L20 10 L44 10 L44 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 10 L24 4 L42 4 L44 10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M44 16 L82 16 L82 24 L44 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><circle cx="20" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="68" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Pick up</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Camioneta SUV')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 88 36" width="60" height="27"><path d="M6 24 L6 14 L16 8 L72 8 L82 14 L82 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M18 8 L20 3 L70 3 L72 8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="68" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="44" y1="8" x2="44" y2="24" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/></svg></span>
-              <span style="font-size:.92rem;">Camioneta SUV</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Van / Minivan')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 88 36" width="60" height="27"><path d="M6 24 L6 12 L18 8 L76 8 L82 12 L82 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M18 8 L18 3 L76 3 L76 8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="68" cy="27" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="52" y1="8" x2="52" y2="24" stroke="currentColor" stroke-width="1.5"/></svg></span>
-              <span style="font-size:.92rem;">Van / Minivan</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Camión de carga')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 96 40" width="64" height="27"><rect x="6" y="8" width="84" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="38" y1="8" x2="38" y2="30" stroke="currentColor" stroke-width="2"/><path d="M6 8 L6 18 L38 18" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="20" cy="33" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="72" cy="33" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="84" cy="33" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Camión de carga</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Camioneta de reparto')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 88 36" width="60" height="27"><rect x="44" y="8" width="38" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M6 24 L6 12 L20 8 L44 8 L44 26 L6 26 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M20 8 L20 3 L40 3 L44 8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="28" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="68" cy="28" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Camioneta de reparto</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Tráiler')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 110 40" width="72" height="27"><rect x="46" y="6" width="58" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M6 28 L6 14 L20 8 L46 8 L46 28 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M20 8 L22 3 L44 3 L46 8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="32" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="66" cy="32" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="80" cy="32" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="94" cy="32" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Tráiler</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Autobús')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 96 40" width="64" height="27"><rect x="6" y="6" width="84" height="24" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"/><rect x="14" y="10" width="12" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="30" y="10" width="12" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="46" y="10" width="12" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="62" y="10" width="12" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="20" cy="33" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="76" cy="33" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Autobús</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Microbús')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 88 36" width="60" height="27"><rect x="6" y="8" width="76" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/><rect x="12" y="11" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="26" y="11" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="40" y="11" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="56" y="11" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="29" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="68" cy="29" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Microbús</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Taxi')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 80 36" width="56" height="27"><path d="M8 24 L8 18 L20 10 L56 10 L72 18 L72 24 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M22 10 L26 4 L52 4 L58 10" fill="none" stroke="currentColor" stroke-width="2"/><rect x="28" y="2" width="18" height="4" rx="1" fill="currentColor" opacity="0.5"/><circle cx="20" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="60" cy="26" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/></svg></span>
-              <span style="font-size:.92rem;">Taxi</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Triciclo')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 72 36" width="52" height="27"><circle cx="14" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="58" cy="24" r="6" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="42" cy="24" r="6" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M14 16 L28 8 L42 18" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M28 8 L58 18" fill="none" stroke="currentColor" stroke-width="2"/><path d="M42 18 L58 18" fill="none" stroke="currentColor" stroke-width="2"/><rect x="48" y="8" width="14" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-              <span style="font-size:.92rem;">Triciclo</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Cuatrimoto')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 80 36" width="56" height="27"><circle cx="14" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="66" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M14 17 L20 10 L60 10 L66 17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><rect x="26" y="6" width="28" height="8" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M36 6 L38 2 L42 2 L44 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-              <span style="font-size:.92rem;">Cuatrimoto</span>
-            </div>
-            <div class="sv-item sv-vehicle" onclick="pickSelect('tipo_vehiculo','tipo_vehiculo_search','Sin vehículo')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
-              <span style="color:var(--text2);flex-shrink:0;"><svg viewBox="0 0 48 48" width="36" height="36"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3"/><line x1="8" y1="8" x2="40" y2="40" stroke="currentColor" stroke-width="3"/></svg></span>
-              <span style="font-size:.92rem;">Sin vehículo</span>
-            </div>
-          </div>
+        <div class="field--rel">
+          <input type="text" id="tipo_vehiculo_search" class="input-mb4" placeholder="Buscar tipo..." autocomplete="off" data-input="filterSelect" data-args='["tipo_vehiculo","tipo_vehiculo_search"]' data-focus="mostrarTiposVehiculo">
+          <!-- Opciones generadas desde TIPOS_VEHICULO (js/catalogos.js) -->
+          <div id="tipo_vehiculo_dropdown" class="sv-dropdown hidden"></div>
           <input type="hidden" id="tipo_vehiculo" value="">
         </div>
+        <div id="tipo-detectado" class="hidden"></div>
       </div>
-      <div class="field" style="position:relative">
+      <div class="field field--rel">
         <label>Marca</label>
-        <input type="text" id="marca" placeholder="Bajaj" autocomplete="off" oninput="onMarcaInput()">
+        <input type="text" id="marca" placeholder="Bajaj" autocomplete="off" data-input="onMarcaInput">
         <div class="autocomplete-list" id="ac_marca"></div>
       </div>
     </div>
     <div class="field-row">
-      <div class="field" style="position:relative">
+      <div class="field field--rel">
         <label>Sub Marca</label>
-        <input type="text" id="submarca" placeholder="Pulsar N 250 UG" autocomplete="off" oninput="acSubmarca()">
+        <input type="text" id="submarca" placeholder="Pulsar N 250 UG" autocomplete="off" data-input="acSubmarca" data-blur="onSubmarcaBlur">
         <div class="autocomplete-list" id="ac_submarca"></div>
       </div>
       <div class="field"><label>Modelo</label><input type="text" id="modelo" placeholder="Pulsar N 250"></div>
@@ -421,109 +379,110 @@
       <div class="field"><label>Color</label><input type="text" id="color" placeholder="Azul con Negro"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Placas</label><input type="text" id="placas" placeholder="63SHP3" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
-      <div class="field" style="position:relative">
+      <div class="field"><label>Placas</label><input type="text" id="placas" class="input-upper" placeholder="63SHP3" data-input="aMayusculas" data-args='["$el"]'></div>
+      <div class="field field--rel">
         <label>Estado de Placas</label>
-        <input type="text" id="estado_placas" placeholder="Nuevo León" autocomplete="off" oninput="acFilter('estado_placas','ac_edo_placas',ESTADOS)">
+        <input type="text" id="estado_placas" placeholder="Nuevo León" autocomplete="off" data-input="acFilter" data-args='["estado_placas","ac_edo_placas","ESTADOS"]'>
         <div class="autocomplete-list" id="ac_edo_placas"></div>
       </div>
     </div>
     <div class="field-row">
       <div class="field"><label>Documentación Completa</label><select id="documentacion"><option value="">--</option><option>Sí</option><option>No</option><option>Parcial</option></select></div>
     </div>
-    <div class="field"><label>Número de Serie</label><input type="text" id="serie" placeholder="MD2B97FX7SCK80149" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+    <div class="field"><label>Número de Serie</label><input type="text" id="serie" class="input-upper" placeholder="MD2B97FX7SCK80149" data-input="aMayusculas" data-args='["$el"]'></div>
     <div class="field-row">
       <div class="field"><label>Número de Motor</label><input type="text" id="motor"></div>
       <div class="field"><label>NIV</label><input type="text" id="niv"></div>
     </div>
     <div class="field">
       <label>Detallado / Observaciones</label>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;margin-top:2px;">
-        <button type="button" onclick="toggleCarac(this,'vidrios polarizados')" class="btn-frase carac-btn">🪟 Vidrios polarizados</button>
-        <button type="button" onclick="toggleCarac(this,'sin placas')" class="btn-frase carac-btn">🚫 Sin placas</button>
-        <button type="button" onclick="toggleCarac(this,'daños visibles')" class="btn-frase carac-btn">⚠️ Daños visibles</button>
+      <div class="chips chips--top">
+        <button type="button" class="btn-frase carac-btn" data-action="toggleCarac" data-args='["$el","vidrios polarizados"]'>🪟 Vidrios polarizados</button>
+        <button type="button" class="btn-frase carac-btn" data-action="toggleCarac" data-args='["$el","sin placas"]'>🚫 Sin placas</button>
+        <button type="button" class="btn-frase carac-btn" data-action="toggleCarac" data-args='["$el","daños visibles"]'>⚠️ Daños visibles</button>
       </div>
-      <textarea id="observaciones" placeholder="Escribe aquí o usa los botones de arriba..." oninput="onObsManualVeh()"></textarea>
+      <textarea id="observaciones" placeholder="Escribe aquí o usa los botones de arriba..." data-input="onObsManualVeh"></textarea>
     </div>
+  </div>
   </div>
 </div>
 
-<button class="btn-generate" onclick="generar()">⚡ GENERAR REPORTE</button>
-<button class="fab-generate" id="fab-generate" onclick="generar()">⚡ GENERAR</button>
+<button class="btn-generate" id="btn-generar" data-action="generar">⚡ GENERAR REPORTE</button>
+<button class="fab-generate" id="fab-generate" data-action="generar">⚡ GENERAR</button>
 
-<button id="btn-agregar-lote" onclick="agregarAlLote()" style="width:100%;padding:13px;background:linear-gradient(135deg,#7b3fa0,#9b59b6);border:none;border-radius:var(--radius);color:#fff;font-family:'Rajdhani',sans-serif;font-size:.95rem;font-weight:700;letter-spacing:1.5px;cursor:pointer;margin-bottom:12px;box-shadow:0 4px 16px rgba(155,89,182,.35);transition:all .18s;">➕ AGREGAR A LOTE Y CONTINUAR CON OTRO</button>
+<button id="btn-agregar-lote" data-action="agregarAlLote">➕ AGREGAR A LOTE Y CONTINUAR CON OTRO</button>
 
-<div id="lote-bar" style="display:none;background:linear-gradient(135deg,rgba(155,89,182,.12),rgba(155,89,182,.04));border:1px solid rgba(155,89,182,.35);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:10px;">
-  <span style="font-size:.82rem;color:var(--text2);">📦 <span id="lote-count">0</span> empadronamiento(s) en el lote</span>
-  <button onclick="abrirPanelLote()" style="background:#9b59b6;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap;">Ver lote</button>
+<div id="lote-bar" class="hidden">
+  <span>📦 <span id="lote-count">0</span> empadronamiento(s) en el lote</span>
+  <button class="lote-bar-btn" data-action="abrirPanelLote">Ver lote</button>
 </div>
 
 <div class="output-box" id="output-box">
   <div class="output-header">
     <span>📤 Listo para WhatsApp</span>
-    <div style="display:flex;gap:6px;">
-      <button class="btn-copy" style="background:var(--surface2);border:1px solid var(--border2);" onclick="verPreview()">👁 Vista previa</button>
-      <button class="btn-copy" id="btn-copy" onclick="copiar()">📋 Copiar</button>
+    <div class="row">
+      <button class="btn-copy btn-copy--soft" data-action="verPreview">👁 Vista previa</button>
+      <button class="btn-copy" id="btn-copy" data-action="copiar">📋 Copiar</button>
     </div>
   </div>
   <textarea id="output-text" readonly></textarea>
 </div>
 
 <!-- PANEL DE LOTE -->
-<div id="lote-modal" style="display:none;position:fixed;inset:0;z-index:1150;background:rgba(0,0,0,.85);padding:16px;overflow-y:auto;" onclick="if(event.target===this)cerrarPanelLote()">
-  <div style="max-width:600px;margin:0 auto;background:var(--section);border-radius:var(--radius);border:1px solid rgba(155,89,182,.4);overflow:hidden;">
-    <div style="background:linear-gradient(135deg,#5e2d78,#7b3fa0);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
-      <span style="color:#fff;font-weight:700;font-family:'Rajdhani',sans-serif;font-size:1rem;letter-spacing:1px;">📦 LOTE DE EMPADRONAMIENTOS</span>
-      <button onclick="cerrarPanelLote()" style="background:transparent;border:none;color:#fff;font-size:1.4rem;cursor:pointer;">✕</button>
+<div id="lote-modal" class="modal modal--lote hidden" data-action="cerrarPanelLote" data-self-only>
+  <div class="lote-card">
+    <div class="lote-head">
+      <span>📦 LOTE DE EMPADRONAMIENTOS</span>
+      <button class="modal-x" data-action="cerrarPanelLote">✕</button>
     </div>
-    <div id="lote-lista" style="padding:14px;display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto;"></div>
-    <div style="padding:14px;display:flex;gap:8px;border-top:1px solid var(--border);flex-wrap:wrap;">
-      <button onclick="copiarTodoLote()" style="flex:1;min-width:140px;padding:12px;background:linear-gradient(135deg,#7b3fa0,#9b59b6);border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;">📋 Copiar todo el lote</button>
-      <button onclick="vaciarLote()" style="padding:12px 16px;background:transparent;border:1px solid var(--danger);border-radius:8px;color:var(--danger);font-weight:600;font-size:.85rem;cursor:pointer;">🗑 Vaciar lote</button>
+    <div id="lote-lista"></div>
+    <div class="lote-foot">
+      <button class="lote-copy" data-action="copiarTodoLote">📋 Copiar todo el lote</button>
+      <button class="lote-vaciar" data-action="vaciarLote">🗑 Vaciar lote</button>
     </div>
   </div>
 </div>
 
 <!-- MAPA — MARCAR PIN -->
-<div id="map-modal" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.85);padding:0;">
-  <div style="display:flex;flex-direction:column;height:100%;">
-    <div style="background:#0a1014;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--gold);">
-      <span style="color:var(--gold2);font-size:.9rem;font-weight:600;">📌 Toca el mapa para marcar la ubicación exacta</span>
-      <button onclick="cerrarMapaPin()" style="background:transparent;border:none;color:#8696a0;font-size:1.4rem;cursor:pointer;">✕</button>
+<div id="map-modal" class="modal modal--map hidden">
+  <div class="map-layout">
+    <div class="map-head">
+      <span>📌 Toca el mapa para marcar la ubicación exacta</span>
+      <button class="modal-x modal-x--muted" data-action="cerrarMapaPin">✕</button>
     </div>
-    <div id="map-pin-container" style="flex:1;position:relative;">
-      <div id="map-pin-el" style="width:100%;height:100%;"></div>
+    <div id="map-pin-container">
+      <div id="map-pin-el"></div>
     </div>
-    <div id="map-pin-status" style="background:#0a1014;color:var(--text2);font-size:.78rem;padding:8px 16px;text-align:center;min-height:20px;"></div>
-    <div style="background:#0a1014;padding:12px 16px;display:flex;gap:8px;border-top:1px solid var(--border);">
-      <button onclick="centrarEnMiUbicacion()" style="padding:11px 16px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:.85rem;cursor:pointer;white-space:nowrap;">📍 Centrar en mí</button>
-      <button onclick="confirmarPinMapa()" style="flex:1;padding:11px;background:linear-gradient(135deg,var(--accent2),var(--accent));border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.9rem;cursor:pointer;">✅ Usar esta ubicación</button>
+    <div id="map-pin-status"></div>
+    <div class="map-foot">
+      <button class="map-btn" data-action="centrarEnMiUbicacion">📍 Centrar en mí</button>
+      <button class="map-btn map-btn--ok" data-action="confirmarPinMapa">✅ Usar esta ubicación</button>
     </div>
   </div>
 </div>
 
 <!-- PREVIEW MODAL (estilo WhatsApp) -->
-<div id="preview-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.8);padding:20px;overflow-y:auto;" onclick="if(event.target===this)cerrarPreview()">
-  <div style="max-width:420px;margin:20px auto;background:#0a1014;border-radius:12px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6);">
-    <div style="background:#1f2c34;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-      <span style="color:#e9edef;font-size:.9rem;font-weight:600;">📱 Así se verá en WhatsApp</span>
-      <button onclick="cerrarPreview()" style="background:transparent;border:none;color:#8696a0;font-size:1.3rem;cursor:pointer;">✕</button>
+<div id="preview-modal" class="modal modal--preview hidden" data-action="cerrarPreview" data-self-only>
+  <div class="wa-card">
+    <div class="wa-head">
+      <span>📱 Así se verá en WhatsApp</span>
+      <button class="modal-x modal-x--muted" data-action="cerrarPreview">✕</button>
     </div>
-    <div style="background:#0b141a;padding:16px;background-image:url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h60v60H0z\' fill=\'none\'/%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'.8\' fill=\'%23182229\'/%3E%3C/svg%3E');">
-      <div id="preview-bubble" style="background:#005c4b;border-radius:8px;padding:10px 12px;color:#e9edef;font-size:.82rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow-y:auto;"></div>
+    <div class="wa-body">
+      <div id="preview-bubble"></div>
     </div>
-    <div style="background:#1f2c34;padding:12px 16px;">
-      <button onclick="copiar();cerrarPreview();" style="width:100%;padding:11px;background:#00a884;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.9rem;cursor:pointer;">📋 Copiar y cerrar</button>
+    <div class="wa-foot">
+      <button class="wa-copy" data-action="copiarYCerrarPreview">📋 Copiar y cerrar</button>
     </div>
   </div>
 </div>
 
 <!-- TOAST -->
-<div id="toast" style="display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(0,160,80,.95);color:#fff;padding:10px 22px;border-radius:24px;font-size:.85rem;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:toastIn .3s ease;"></div>
+<div id="toast" class="hidden"></div>
 
-<button class="btn-clear" onclick="limpiar()">🗑 Limpiar Todo</button>
+<button class="btn-clear" data-action="limpiar">🗑 Limpiar Todo</button>
+<div class="app-version" id="app-version"></div>
 </div>
-
 <script src="js/catalogos.js"></script>
 <script src="js/app.js"></script>
 </body>

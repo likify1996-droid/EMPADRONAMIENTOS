@@ -1,4 +1,4 @@
-const CACHE = 'fc-empadronamiento-v18';
+const CACHE = 'fc-empadronamiento-v19';
 const ASSETS = [
   './index.html',
   './css/styles.css',
@@ -25,7 +25,8 @@ self.addEventListener('install', e => {
   // se guardan igual y la app sigue funcionando sin conexión.
   e.waitUntil(
     caches.open(CACHE).then(c =>
-      Promise.allSettled(ASSETS.map(a => c.add(a)))
+      // cache:'reload' evita guardar una copia vieja del caché HTTP del navegador
+      Promise.allSettled(ASSETS.map(a => c.add(new Request(a, { cache: 'reload' }))))
     )
   );
   self.skipWaiting();
@@ -52,11 +53,13 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  const isHTML = e.request.mode === 'navigate' ||
-                 url.endsWith('.html') ||
-                 url.endsWith('/');
+  // Archivos propios de la app (HTML, CSS, JS, manifest, íconos): primero la
+  // red, para que index.html y app.js siempre sean de la misma versión; si no
+  // hay señal, la copia guardada.
+  const isApp = e.request.mode === 'navigate' ||
+                new URL(url).origin === self.location.origin;
 
-  if (isHTML) {
+  if (isApp) {
     // Network-first con límite de tiempo. Solo se guarda en caché si la
     // respuesta fue correcta: un 404/500 NUNCA reemplaza la copia buena.
     e.respondWith(
@@ -69,16 +72,16 @@ self.addEventListener('fetch', e => {
           }
           // Respuesta de error del servidor: preferir la copia guardada
           return caches.match(e.request)
-            .then(c => c || caches.match('./index.html'))
+            .then(c => c || (e.request.mode === 'navigate' ? caches.match('./index.html') : null))
             .then(c => c || resp);
         })
-        .catch(() => caches.match(e.request).then(c => c || caches.match('./index.html')))
+        .catch(() => caches.match(e.request).then(c => c || (e.request.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
     );
     return;
   }
 
-  // Resto (logo, manifest, Leaflet, heic2any, fuentes): caché primero y se
-  // va guardando lo descargado para que funcione sin conexión después.
+  // Librerías y fuentes externas (Leaflet, heic2any, Google Fonts): caché
+  // primero y se va guardando lo descargado para usarlo sin conexión.
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;

@@ -8,6 +8,46 @@ window.addEventListener('unhandledrejection',function(ev){
 });
 
 
+// Versión de la app: súbela junto con CACHE en sw.js en cada cambio publicado.
+// Se muestra al pie de la página para saber qué versión tiene cada teléfono.
+const APP_VERSION='19';
+
+// ── EVENTOS DE LA INTERFAZ ─────────────────────────────
+// El HTML no lleva onclick/oninput: cada elemento declara la función que usa
+// con data-action (clic), data-input, data-change, data-focus o data-blur, y
+// sus argumentos en data-args (JSON). En los argumentos, "$el" es el propio
+// elemento y "$value" su valor. data-self-only hace que el clic solo cuente
+// sobre el elemento mismo (para cerrar ventanas al tocar el fondo).
+function runUiHandler(el,attr){
+  const name=el.dataset[attr];
+  const fn=window[name];
+  if(typeof fn!=='function'){console.error('Función de interfaz no encontrada:',name);return;}
+  let args=[];
+  if(el.dataset.args){
+    try{args=JSON.parse(el.dataset.args);}catch(e){console.error('data-args inválido en',el);}
+  }
+  args=args.map(a=>a==='$el'?el:a==='$value'?el.value:a);
+  return fn.apply(el,args);
+}
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-action]');
+  if(!el||el.disabled)return;
+  if('selfOnly' in el.dataset&&e.target!==el)return;
+  runUiHandler(el,'action');
+});
+[['input','input'],['change','change'],['focusin','focus'],['focusout','blur']].forEach(([evento,attr])=>{
+  document.addEventListener(evento,e=>{
+    const el=e.target;
+    if(el&&el.dataset&&el.dataset[attr])runUiHandler(el,attr);
+  });
+});
+
+// Pequeñas acciones que antes iban escritas dentro del HTML
+function abrirGaleria(){document.getElementById('gallery-input').click();}
+function abrirImportPolicia(){document.getElementById('import-policia-input').click();}
+function aMayusculas(el){el.value=el.value.toUpperCase();}
+function copiarYCerrarPreview(){copiar();cerrarPreview();}
+
 // ── SUBCATEGORÍAS ──────────────────────────────────────
 function updateSubcat(){
   const cat=document.getElementById('categoria').value;
@@ -17,19 +57,32 @@ function updateSubcat(){
 }
 
 // ── AUTOCOMPLETE GENÉRICO ──────────────────────────────
-function acFilter(inId,listId,data){
-  const val=document.getElementById(inId).value.toLowerCase();
+const AC_LISTAS={ESTADOS};
+function pintarAutocomplete(inId,listId,hits){
   const list=document.getElementById(listId);
-  if(!val){list.classList.remove('show');return;}
-  const hits=data.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
+  list.innerHTML='';
   if(!hits.length){list.classList.remove('show');return;}
-  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('${inId}','${listId}',this)">${m}</div>`).join('');
+  hits.forEach(m=>{
+    const d=document.createElement('div');
+    d.className='ac-item';
+    d.textContent=m;
+    d.addEventListener('mousedown',()=>acPick(inId,listId,d));
+    list.appendChild(d);
+  });
   list.classList.add('show');
+}
+function acFilter(inId,listId,data){
+  if(typeof data==='string')data=AC_LISTAS[data]||[];
+  // Sin acentos ni mayúsculas: "nuevo leon" encuentra "Nuevo León"
+  const val=normVeh(document.getElementById(inId).value);
+  if(!val){document.getElementById(listId).classList.remove('show');return;}
+  pintarAutocomplete(inId,listId,data.filter(d=>normVeh(d).includes(val)).slice(0,8));
 }
 function acPick(inId,listId,el){
   document.getElementById(inId).value=el.textContent;
   document.getElementById(listId).classList.remove('show');
-  if(inId==='marca')updateSubmarcaList();
+  if(inId==='marca'){updateSubmarcaList();aplicarDeteccionVehiculo();}
+  if(inId==='submarca')aplicarDeteccionVehiculo();
 }
 document.addEventListener('click',e=>{
   document.querySelectorAll('.autocomplete-list').forEach(l=>{
@@ -44,22 +97,63 @@ function onMarcaInput(){
   updateSubmarcaList();
 }
 function updateSubmarcaList(){
-  const marca=document.getElementById('marca').value.trim();
+  const marca=buscarMarca(document.getElementById('marca').value);
   const modelos=SUBMARCAS[marca]||[];
   const sub=document.getElementById('submarca');
   if(modelos.length&&sub.value==='')sub.placeholder=modelos[0]+'...';
 }
 function acSubmarca(){
-  const marca=document.getElementById('marca').value.trim();
-  const val=document.getElementById('submarca').value.toLowerCase();
+  const marca=buscarMarca(document.getElementById('marca').value);
+  const val=normVeh(document.getElementById('submarca').value);
   const list=document.getElementById('ac_submarca');
   const base=SUBMARCAS[marca]||[];
   // Si hay lista de la marca, filtrar de ella; si no, buscar en todos
-  const pool=base.length?base:Object.values(SUBMARCAS).flat();
-  const hits=pool.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
-  if(!hits.length||!val){list.classList.remove('show');return;}
-  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('submarca','ac_submarca',this)">${m}</div>`).join('');
-  list.classList.add('show');
+  const pool=base.length?base:TODAS_SUBMARCAS;
+  if(!val){list.classList.remove('show');return;}
+  pintarAutocomplete('submarca','ac_submarca',pool.filter(d=>normVeh(d).includes(val)).slice(0,8));
+}
+
+// ── TIPO DE VEHÍCULO AUTOMÁTICO ────────────────────────
+// Con la submarca (y la marca si la hay) se busca el modelo en el catálogo
+// y se llena el tipo. Si el tipo lo eligió el policía a mano, no se cambia:
+// solo se muestra lo que dice el catálogo (p. ej. eligió "Taxi" para un Versa).
+let tipoVehiculoAuto=false;
+function aplicarDeteccionVehiculo(){
+  const hint=document.getElementById('tipo-detectado');
+  const r=detectarVehiculo(v('marca'),v('submarca'));
+  if(!r){hint.style.display='none';return null;}
+  // Completar o corregir la marca (p. ej. "nissan" → "Nissan")
+  const marcaActual=v('marca');
+  if(r.marca&&(!marcaActual||buscarMarca(marcaActual)===r.marca)&&marcaActual!==r.marca){
+    fill('marca',r.marca);
+    updateSubmarcaList();
+  }
+  // "versa" → "Versa" (solo si escribió el modelo exacto, no "Versa Advance")
+  if(r.exacto&&v('submarca')!==r.modelo)document.getElementById('submarca').value=r.modelo;
+  if(!r.tipo){hint.style.display='none';return r;}
+  const actual=v('tipo_vehiculo');
+  const nombre=[r.marca,r.modelo].filter(Boolean).join(' ');
+  if(!actual||tipoVehiculoAuto){
+    pickSelect('tipo_vehiculo','tipo_vehiculo_search',r.tipo);
+    document.getElementById('tipo_vehiculo_search').classList.add('filled');
+    tipoVehiculoAuto=true;
+    hint.textContent=`🔎 Tipo detectado: ${r.tipo} (${nombre})`;
+    hint.style.display='block';
+  }else if(actual!==r.tipo){
+    hint.textContent=`ℹ️ Según el catálogo, ${nombre} es ${r.tipo}`;
+    hint.style.display='block';
+  }else{
+    hint.style.display='none';
+  }
+  return r;
+}
+function ocultarTipoDetectado(){
+  tipoVehiculoAuto=false;
+  const h=document.getElementById('tipo-detectado');if(h)h.style.display='none';
+}
+function onSubmarcaBlur(){
+  // Espera a que termine un posible clic en la lista de sugerencias
+  setTimeout(aplicarDeteccionVehiculo,150);
 }
 
 // ── DIRECCIÓN ──────────────────────────────────────────
@@ -112,11 +206,11 @@ function geoLocate(){
   let readings=[], bestReading=null, watchId=null, timer=null, gotAny=false;
 
   function signalBars(acc){
-    if(acc<=10)return'<span style="color:var(--green)">▂▄▆█ Excelente</span>';
-    if(acc<=20)return'<span style="color:var(--green)">▂▄▆░ Buena</span>';
-    if(acc<=50)return'<span style="color:#f0a000">▂▄░░ Regular</span>';
-    if(acc<=100)return'<span style="color:#f0a000">▂▄░░ Aceptable</span>';
-    return'<span style="color:var(--danger)">▂░░░ Aproximada</span>';
+    if(acc<=10)return'<span class="txt-ok">▂▄▆█ Excelente</span>';
+    if(acc<=20)return'<span class="txt-ok">▂▄▆░ Buena</span>';
+    if(acc<=50)return'<span class="txt-warn">▂▄░░ Regular</span>';
+    if(acc<=100)return'<span class="txt-warn">▂▄░░ Aceptable</span>';
+    return'<span class="txt-danger">▂░░░ Aproximada</span>';
   }
 
   function updateStatus(acc, count){
@@ -144,10 +238,10 @@ function geoLocate(){
     // Si ya tenemos alguna lectura, usar la mejor
     if(bestReading){finish(bestReading.lat,bestReading.lon,bestReading.acc);return;}
     // Errores específicos
-    if(err.code===1){st.innerHTML='<span style="color:var(--danger)">❌ Permiso de ubicación denegado. Actívalo en ajustes del navegador.</span>';}
-    else if(err.code===2){st.innerHTML='<span style="color:var(--danger)">❌ Posición no disponible. Sal a cielo abierto e intenta de nuevo.</span>';}
-    else if(err.code===3){st.innerHTML='<span style="color:#f0a000">⏱ GPS lento. Intentando con menor precisión...</span>';fallbackLowAccuracy();}
-    else st.innerHTML='<span style="color:var(--danger)">❌ Error de GPS. Intenta de nuevo.</span>';
+    if(err.code===1){st.innerHTML='<span class="txt-danger">❌ Permiso de ubicación denegado. Actívalo en ajustes del navegador.</span>';}
+    else if(err.code===2){st.innerHTML='<span class="txt-danger">❌ Posición no disponible. Sal a cielo abierto e intenta de nuevo.</span>';}
+    else if(err.code===3){st.innerHTML='<span class="txt-warn">⏱ GPS lento. Intentando con menor precisión...</span>';fallbackLowAccuracy();}
+    else st.innerHTML='<span class="txt-danger">❌ Error de GPS. Intenta de nuevo.</span>';
   }
 
   // Intento principal: alta precisión
@@ -165,7 +259,7 @@ function geoLocate(){
       finish(lat,lon,acc);
     },err=>{
       if(bestReading)finish(bestReading.lat,bestReading.lon,bestReading.acc);
-      else st.innerHTML='<span style="color:var(--danger)">❌ No se pudo obtener ubicación. Verifica que el GPS esté activado.</span>';
+      else st.innerHTML='<span class="txt-danger">❌ No se pudo obtener ubicación. Verifica que el GPS esté activado.</span>';
     },{enableHighAccuracy:false,timeout:15000,maximumAge:30000});
   }
 
@@ -179,6 +273,24 @@ function geoLocate(){
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
+// Nominatim permite máximo 1 petición por segundo y bloquea a quien se pasa.
+// Todas las consultas pasan por aquí y se forman en fila con 1.1 s entre
+// cada una. Si la consulta ya no sirve (el usuario siguió escribiendo),
+// vigente() devuelve false y se salta sin gastar el turno.
+let _nominatimCola=Promise.resolve(),_nominatimUltima=0;
+function nominatimFetch(url,vigente){
+  const turno=_nominatimCola.then(async()=>{
+    if(vigente&&!vigente())throw new Error('consulta descartada');
+    const espera=_nominatimUltima+1100-Date.now();
+    if(espera>0)await sleep(espera);
+    if(vigente&&!vigente())throw new Error('consulta descartada');
+    _nominatimUltima=Date.now();
+    return fetch(url);
+  });
+  _nominatimCola=turno.catch(()=>{});
+  return turno;
+}
+
 // Busca la calle que cruza (perpendicular) a la calle dada, alrededor de un punto.
 // Devuelve true si encontró una. Respeta el límite de ~1 petición/seg de Nominatim.
 async function detectarCruceEn(lat,lon,calle,statusElId){
@@ -186,7 +298,7 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
   try{
     const probeRoad=async(dlat,dlon)=>{
       try{
-        const r2=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat+dlat}&lon=${lon+dlon}&format=json&accept-language=es`);
+        const r2=await nominatimFetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat+dlat}&lon=${lon+dlon}&format=json&accept-language=es`);
         if(!r2.ok)return '';
         const d2=await r2.json();
         return d2.address?.road||d2.address?.pedestrian||d2.address?.footway||'';
@@ -196,7 +308,6 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
     // Sondeo al norte: si sigue siendo la misma calle, corre Norte-Sur (el cruce
     // está al Este/Oeste); si cambia, corre Este-Oeste (el cruce está al Norte/Sur)
     const rNorte=await probeRoad(D,0);
-    await sleep(1100);
     const corrVertical=rNorte&&rNorte===calle;
     const offsets=corrVertical
       ? [[0,D],[0,-D],[D,D],[D,-D],[-D,D],[-D,-D]]
@@ -206,7 +317,6 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
       const c2=await probeRoad(dlat,dlon);
       if(c2&&c2!==calle)calles.add(c2);
       if(calles.size>0)break;
-      await sleep(1100);
     }
     const cruceEl=document.getElementById('addr_cruce');
     if(calles.size>0){
@@ -221,7 +331,7 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
       cruceEl.placeholder='⚠️ No detectado — escribe manualmente';
       setTimeout(()=>cruceEl.focus(),800);
       const geoSt=document.getElementById(statusElId);
-      if(geoSt)geoSt.innerHTML+='<br><span style="color:var(--danger);font-size:.72rem;">⚠️ Cruce no detectado — escríbelo manualmente</span>';
+      if(geoSt)geoSt.innerHTML+='<br><span class="txt-danger txt-sm">⚠️ Cruce no detectado — escríbelo manualmente</span>';
     }
   }catch(e){}
   return found;
@@ -232,7 +342,7 @@ async function fetchAddress(lat, lon, acc, statusElId){
   const st=document.getElementById(statusElId);
   try{
     // Nominatim — calle, CP, municipio
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
+    const r=await nominatimFetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=es`);
     if(!r.ok)throw new Error(`Nominatim respondió ${r.status} — probablemente límite de peticiones alcanzado, espera unos segundos e intenta de nuevo`);
     const d=await r.json();
     if(d.error){throw new Error('No se encontró información para este punto ('+d.error+')');}
@@ -246,7 +356,7 @@ async function fetchAddress(lat, lon, acc, statusElId){
     if(cp)document.getElementById('addr_cp').value=cp;
     if(mun)document.getElementById('addr_municipio').value=mun;
     if(!calle&&!cp&&!mun){
-      st.innerHTML='<span style="color:#f0a000">⚠️ No se encontraron datos de dirección para este punto exacto. Ajusta el pin o escribe manualmente.</span>';
+      st.innerHTML='<span class="txt-warn">⚠️ No se encontraron datos de dirección para este punto exacto. Ajusta el pin o escribe manualmente.</span>';
     }
 
     // Cruce — calle perpendicular a la actual
@@ -557,10 +667,10 @@ function checkImageQuality(canvas){
   variance=vals.reduce((s,v)=>s+Math.pow(v-brightness,2),0)/vals.length;
   const qi=document.getElementById('img-quality');
   qi.style.display='block';
-  if(brightness<50){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen muy oscura — mejora la iluminación</span>';return false;}
-  if(brightness>220){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen sobreexpuesta — reduce la luz</span>';return false;}
-  if(variance<200){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen borrosa — enfoca el documento</span>';return false;}
-  qi.innerHTML='✅ <span style="color:var(--green)">Calidad de imagen buena</span>';
+  if(brightness<50){qi.innerHTML='⚠️ <span class="txt-warn">Imagen muy oscura — mejora la iluminación</span>';return false;}
+  if(brightness>220){qi.innerHTML='⚠️ <span class="txt-warn">Imagen sobreexpuesta — reduce la luz</span>';return false;}
+  if(variance<200){qi.innerHTML='⚠️ <span class="txt-warn">Imagen borrosa — enfoca el documento</span>';return false;}
+  qi.innerHTML='✅ <span class="txt-ok">Calidad de imagen buena</span>';
   return true;
 }
 
@@ -574,6 +684,13 @@ function showPreview(canvas){
 // ── OCR CON GROQ (vía proxy en Cloudflare Workers) ─────
 // La key de Groq vive como secreto en el Worker, nunca en el teléfono.
 const OCR_PROXY_URL='https://fc-ocr.therts649.workers.dev';
+// Modelos de visión de Groq, en orden de preferencia. Si Groq retira uno,
+// la app pasa solo al siguiente; revisa console.groq.com/docs/models de vez
+// en cuando y actualiza esta lista (y MODELOS_PERMITIDOS en el Worker).
+const OCR_MODELOS=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
+// Tamaño de la foto que se envía: suficiente para leer el CURP sin gastar
+// datos de más con señal mala.
+const OCR_MAX_LADO=1600,OCR_CALIDAD_JPEG=0.85;
 const OCR_TOKEN_KEY='fc_ocr_token';
 // La clave de acceso solo se pide si el Worker la exige (responde 401) y se
 // recuerda en el teléfono. Si en Cloudflare no hay ACCESS_TOKEN, nunca se pide.
@@ -585,6 +702,83 @@ function pedirOcrToken(incorrecta){
   const t=(prompt(msg)||'').trim();
   try{if(t)localStorage.setItem(OCR_TOKEN_KEY,t);else localStorage.removeItem(OCR_TOKEN_KEY);}catch(e){}
   return t;
+}
+
+// Reduce la foto, la pasa a gris con contraste y la convierte a JPEG base64
+function canvasParaOCR(canvas){
+  let src=canvas;
+  const lado=Math.max(canvas.width,canvas.height);
+  if(lado>OCR_MAX_LADO){
+    const k=OCR_MAX_LADO/lado;
+    src=document.createElement('canvas');
+    src.width=Math.round(canvas.width*k);src.height=Math.round(canvas.height*k);
+    src.getContext('2d').drawImage(canvas,0,0,src.width,src.height);
+  }
+  return preprocessCanvas(src).toDataURL('image/jpeg',OCR_CALIDAD_JPEG).split(',')[1];
+}
+function esErrorDeRed(e){return /^(Sin conexión|Tiempo agotado)/.test(e&&e.message||'');}
+
+// ── DOCUMENTOS PENDIENTES (SIN SEÑAL) ──────────────────
+// Si no hay internet, la foto ya procesada se guarda y se lee después con
+// "Leer ahora". Se borra con "Terminar turno" o a las 12 horas.
+const OCR_COLA_KEY='fc_ocr_pendientes_v1',OCR_COLA_MAX=4;
+function leerColaOcr(){
+  try{
+    const c=JSON.parse(localStorage.getItem(OCR_COLA_KEY)||'[]');
+    const vivos=c.filter(x=>x&&x.b64&&Date.now()-x.ts<=DRAFT_MAX_AGE_MS);
+    if(vivos.length!==c.length)guardarColaOcr(vivos);
+    return vivos;
+  }catch(e){return[];}
+}
+function guardarColaOcr(c){
+  try{
+    if(c.length)localStorage.setItem(OCR_COLA_KEY,JSON.stringify(c));
+    else localStorage.removeItem(OCR_COLA_KEY);
+    return true;
+  }catch(e){return false;}
+}
+function encolarOcr(b64){
+  const c=leerColaOcr();
+  if(c.length>=OCR_COLA_MAX){showToast(`⚠️ Ya hay ${OCR_COLA_MAX} documentos esperando señal — léelos o bórralos primero`,3500);return false;}
+  c.push({b64,ts:Date.now(),tabId:activeTabId});
+  if(!guardarColaOcr(c)){showToast('⚠️ No hay espacio en el teléfono para guardar la foto',3500);return false;}
+  actualizarAvisoOcr();
+  return true;
+}
+function actualizarAvisoOcr(){
+  const n=leerColaOcr().length;
+  const box=document.getElementById('ocr-pendientes');
+  if(!box)return;
+  box.style.display=n?'flex':'none';
+  document.getElementById('ocr-pendientes-txt').textContent=`📥 ${n} documento(s) por leer cuando haya señal`;
+}
+async function procesarOcrPendientes(){
+  if(!navigator.onLine){showToast('⚠️ Todavía no hay conexión');return;}
+  const cola=leerColaOcr();
+  if(!cola.length){actualizarAvisoOcr();return;}
+  const status=document.getElementById('scan-status');
+  let ok=0;
+  for(const item of cola){
+    // Cada foto se llena en la pestaña donde se tomó, si sigue abierta
+    if(item.tabId&&item.tabId!==activeTabId&&tabs.some(t=>t.id===item.tabId))switchTab(item.tabId);
+    status.textContent=`🔍 Leyendo documento pendiente ${ok+1} de ${cola.length}...`;
+    try{
+      const obj=await callGroqWithRetry(item.b64);
+      fillOCRFields(obj,{sinPreguntar:true});
+      ok++;
+      guardarColaOcr(leerColaOcr().filter(x=>x.ts!==item.ts));
+    }catch(e){
+      status.textContent='❌ '+e.message;
+      break;
+    }
+  }
+  actualizarAvisoOcr();
+  if(ok)showToast(`✅ ${ok} documento(s) leído(s) — revisa los campos verdes`,3000);
+}
+function descartarOcrPendientes(){
+  if(!confirm('¿Borrar las fotos de documentos pendientes de leer?'))return;
+  guardarColaOcr([]);
+  actualizarAvisoOcr();
 }
 
 async function captureOCR(){
@@ -599,22 +793,25 @@ async function captureOCR(){
   savePhotoToDevice(canvas);
   showPreview(canvas);
   checkImageQuality(canvas);
+  const base64=canvasParaOCR(canvas);
   if(!navigator.onLine){
-    status.textContent='❌ Sin conexión a internet. El OCR requiere internet.';
+    if(encolarOcr(base64))status.textContent='📥 Sin conexión: la foto se guardó y se leerá cuando vuelva la señal.';
     document.getElementById('btn-releer').style.display='inline-flex';
     return;
   }
   setProgress(10);
   status.textContent='🔍 Analizando documento con IA...';
   try{
-    const processed=preprocessCanvas(canvas);
-    const base64=processed.toDataURL('image/jpeg',0.9).split(',')[1];
     const obj=await callGroqWithRetry(base64);
     setProgress(90);
     fillOCRFields(obj);
   }catch(e){
-    status.textContent='❌ '+e.message;
     setProgress(0);
+    if(esErrorDeRed(e)&&encolarOcr(base64)){
+      status.textContent='📥 La señal falló: la foto se guardó y se leerá cuando vuelva.';
+    }else{
+      status.textContent='❌ '+e.message;
+    }
     console.error('captureOCR error:',e);
   }
   document.getElementById('btn-releer').style.display='inline-flex';
@@ -622,10 +819,7 @@ async function captureOCR(){
 
 // ── REINTENTO AUTOMÁTICO ───────────────────────────────
 async function callGroqWithRetry(base64,maxAttempts){
-  // Modelos de visión de Groq, en orden de preferencia. qwen3.6 es "Preview"
-  // y a veces Groq restringe el acceso; los otros dos son modelos de
-  // producción estables que sirven como respaldo automático.
-  const modelos=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
+  const modelos=OCR_MODELOS;
   let lastErr,clavePedida=false;
   for(let i=0;i<modelos.length;i++){
     const modelo=modelos[i];
@@ -763,20 +957,15 @@ async function processGalleryImages(input){
   if(!files.length)return;
   const status=document.getElementById('scan-status');
   document.getElementById('ocr-summary').style.display='none';
-  if(!navigator.onLine){
-    status.textContent='❌ Sin conexión a internet. El OCR requiere internet.';
-    input.value='';
-    return;
-  }
-  let okCount=0,failCount=0,errorDetails=[];
+  let okCount=0,failCount=0,queuedCount=0,errorDetails=[];
   for(let i=0;i<files.length;i++){
     const file=files[i];
     const label=file&&file.name?file.name:`imagen ${i+1}`;
     status.textContent=isHeicFile(file)?`🔄 Convirtiendo ${label} (HEIC→JPG)...`:`🔍 Procesando ${label} (${i+1}/${files.length})...`;
     setProgress(Math.round((i/files.length)*80));
     try{
-      await processSingleImage(file);
-      okCount++;
+      if(await processSingleImage(file)==='encolado')queuedCount++;
+      else okCount++;
     }catch(e){
       failCount++;
       const msg=e&&e.message?e.message:String(e);
@@ -786,7 +975,9 @@ async function processGalleryImages(input){
   }
   setProgress(100);
   setTimeout(()=>setProgress(0),1000);
-  if(failCount>0&&okCount===0){
+  if(queuedCount>0&&failCount===0){
+    status.textContent=`📥 Sin señal: ${queuedCount} foto(s) guardada(s) para leer cuando vuelva la conexión.`;
+  }else if(failCount>0&&okCount===0&&queuedCount===0){
     status.innerHTML=`❌ No se pudo procesar ninguna imagen:<br>`+errorDetails.map(d=>'• '+escHtml(d)).join('<br>');
   }else if(failCount>0){
     status.innerHTML=`⚠️ ${okCount} imagen(es) OK, ${failCount} con error:<br>`+errorDetails.map(d=>'• '+escHtml(d)).join('<br>');
@@ -871,14 +1062,23 @@ async function processSingleImage(file){
   if(source.bitmap&&source.bitmap.close)source.bitmap.close();
   showPreview(canvas);
   checkImageQuality(canvas);
-  const processed=preprocessCanvas(canvas);
-  const base64=processed.toDataURL('image/jpeg',0.9).split(',')[1];
+  const base64=canvasParaOCR(canvas);
   if(!base64){throw new Error('No se pudo convertir la imagen a base64 (canvas vacío)');}
-  const obj=await callGroqWithRetry(base64);
+  if(!navigator.onLine){
+    if(encolarOcr(base64))return'encolado';
+    throw new Error('Sin conexión y no se pudo guardar la foto');
+  }
+  let obj;
+  try{
+    obj=await callGroqWithRetry(base64);
+  }catch(e){
+    if(esErrorDeRed(e)&&encolarOcr(base64))return'encolado';
+    throw e;
+  }
   fillOCRFields(obj);
 }
 
-function fillOCRFields(obj){
+function fillOCRFields(obj,opts){
   const status=document.getElementById('scan-status');
   if(!obj||obj.error==='imagen_borrosa'){status.textContent='⚠️ Imagen borrosa';return;}
   const filled=[];
@@ -918,20 +1118,26 @@ function fillOCRFields(obj){
       // Menor de edad
       if(obj.menor===true){document.getElementById('vulnerable').value='Sí';filled.push('Sector vulnerable (menor)');}
     } else if(obj.tipo==='circulacion'){
-      if(obj.tipo_vehiculo){
-        const tv=obj.tipo_vehiculo.toLowerCase();
-        const tvWord=tv.split(' ')[0];
-        const items=document.querySelectorAll('#tipo_vehiculo_dropdown .sv-item');
-        for(const item of items){
-          if(item.textContent.toLowerCase().includes(tvWord)){
-            pickSelect('tipo_vehiculo','tipo_vehiculo_search',item.textContent.trim());
-            filled.push('Tipo de vehículo');
-            break;
-          }
+      if(obj.marca){fill('marca',buscarMarca(obj.marca)||toTitleCase(obj.marca));updateSubmarcaList();filled.push('Marca');}
+      if(obj.submarca){
+        const det=detectarVehiculo(obj.marca,obj.submarca);
+        fill('submarca',det?det.modelo:toTitleCase(obj.submarca));
+        filled.push('Submarca');
+      }
+      // Tipo: primero por el modelo (catálogo); si no se reconoce, por lo
+      // que dice la tarjeta ("SEDAN 4 PTAS", "VAGONETA"...)
+      const antesTipo=v('tipo_vehiculo');
+      if(!antesTipo)tipoVehiculoAuto=true;
+      const det=aplicarDeteccionVehiculo();
+      if(!(det&&det.tipo)&&!antesTipo){
+        const tt=tipoDesdeTexto(obj.tipo_vehiculo);
+        if(tt){
+          pickSelect('tipo_vehiculo','tipo_vehiculo_search',tt);
+          document.getElementById('tipo_vehiculo_search').classList.add('filled');
+          tipoVehiculoAuto=true;
         }
       }
-      if(obj.marca){fillTitle('marca',obj.marca);updateSubmarcaList();filled.push('Marca');}
-      if(obj.submarca){fillTitle('submarca',obj.submarca);filled.push('Submarca');}
+      if(!antesTipo&&v('tipo_vehiculo'))filled.push('Tipo de vehículo');
       if(obj.anio&&/^\d{4}$/.test(obj.anio)){fill('anio',obj.anio);filled.push('Año');}
       if(obj.placas&&obj.placas.length>=5){fill('placas',obj.placas.toUpperCase());filled.push('Placas');}
       if(obj.estado_placas){const em=ESTADOS.find(e=>e.toLowerCase().includes(obj.estado_placas.toLowerCase()));if(em){fill('estado_placas',em);filled.push('Estado de placas');}}
@@ -952,7 +1158,7 @@ function fillOCRFields(obj){
   document.getElementById('btn-releer').style.display='inline-flex';
   status.textContent='✅ Listo — revisa los campos verdes';
   // Multi-captura: ofrecer escanear otro documento
-  preguntarOtraCaptura();
+  if(!(opts&&opts.sinPreguntar))preguntarOtraCaptura();
 }
 
 // ── NUEVO EMPADRONAMIENTO ──────────────────────────────
@@ -983,7 +1189,7 @@ function nuevoEmpadronamiento(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
 
   // Restaurar datos del policía si eligió conservar
@@ -1056,13 +1262,13 @@ function limpiarSeccion(sec){
     servicio:['zona','ne','nombre_pol','addr_calle','addr_cruce','addr_colonia','addr_cp','addr_municipio','addr_texto','folio','crp','bodycam','motivo'],
     persona:['nombre','nacimiento','edad','estatura','telefono','alias','redes','domicilio','estado_origen','oficio','padre','madre','antecedentes','grupo','rol','adicionales','escolaridad_detalle'],
     tatuajes:['tatuajes_cant','tatuajes_area','tatuajes_desc','tatuajes_bloque'],
-    vehiculo:['marca','submarca','modelo','anio','color','placas','estado_placas','serie','motor','niv','observaciones']
+    vehiculo:['tipo_vehiculo','tipo_vehiculo_search','marca','submarca','modelo','anio','color','placas','estado_placas','serie','motor','niv','observaciones']
   };
   const selects={
     servicio:['categoria','subcategoria'],
     persona:['vulnerable','sexo','estado_civil','escolaridad'],
     tatuajes:[],
-    vehiculo:['tipo_vehiculo','documentacion']
+    vehiculo:['documentacion']
   };
   (maps[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el){el.value=id==='tatuajes_cant'?'0':'';el.classList.remove('filled');}});
   (selects[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
@@ -1071,8 +1277,14 @@ function limpiarSeccion(sec){
     document.getElementById('fotos_si').style.opacity='1';
     document.getElementById('fotos_no').style.opacity='1';
     document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
-  document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
+    // Solo lo de la persona: antes también borraba las características del vehículo
+    negativasActivas=[];obsManualPersona='';
+    document.querySelectorAll('.neg-btn.neg-active').forEach(b=>b.classList.remove('neg-active'));
+  }
+  if(sec==='vehiculo'){
+    caracActivas=[];obsManualVeh='';
+    document.querySelectorAll('.carac-btn.neg-active').forEach(b=>b.classList.remove('neg-active'));
+    ocultarTipoDetectado();
   }
   if(sec==='servicio'){
     document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
@@ -1296,9 +1508,9 @@ function parsePlace(place){
     formatted:(place.formattedAddress||'').replace(/,\s*M[eé]xico$/i,'').trim()
   };
 }
-async function nominatimSearch(query){
+async function nominatimSearch(query,vigente){
   const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query+', Nuevo León, México')}&format=json&limit=6&accept-language=es&countrycodes=mx&viewbox=-100.65,25.95,-99.95,25.40&bounded=0`;
-  const r=await fetch(url);
+  const r=await nominatimFetch(url,vigente);
   if(!r.ok)throw new Error('Nominatim '+r.status);
   const res=await r.json();
   return res.map(x=>{
@@ -1311,20 +1523,19 @@ function pintarSugerencias(sugg,items,onPick,errorMsg){
   sugg.innerHTML='';
   if(errorMsg){
     const e=document.createElement('div');
-    e.style.cssText='font-size:.7rem;padding:7px 12px;color:#f0a000;border-bottom:1px solid var(--border);';
+    e.className='sug-error';
     e.textContent='⚠️ '+errorMsg+' — mostrando resultados básicos';
     sugg.appendChild(e);
   }
   items.forEach(it=>{
     const d=document.createElement('div');
-    d.className='sv-item';
-    d.style.cssText='font-size:.82rem;padding:9px 12px;display:block;';
+    d.className='sv-item sug-item';
     const m=document.createElement('div');
-    m.style.fontWeight='600';m.textContent='📍 '+it.main;
+    m.className='sug-main';m.textContent='📍 '+it.main;
     d.appendChild(m);
     if(it.secondary){
       const s=document.createElement('div');
-      s.style.cssText='font-size:.7rem;color:var(--muted);margin-top:2px;';
+      s.className='sug-sec';
       s.textContent=it.secondary;
       d.appendChild(s);
     }
@@ -1343,7 +1554,7 @@ function buscarDomicilio(query){
   domicilioTimer=setTimeout(async()=>{
     let items=null,gerr='';
     if(getGoogleKey()){try{items=await placesAutocomplete(query);}catch(e){gerr=e.message;}}
-    if(!items){try{items=await nominatimSearch(query);}catch(e){items=[];}}
+    if(!items){try{items=await nominatimSearch(query,()=>seq===_domSeq);}catch(e){items=[];}}
     if(seq!==_domSeq)return;
     pintarSugerencias(sugg,items,pickDomicilio,gerr);
   },350);
@@ -1384,7 +1595,7 @@ function buscarLugar(query){
   lugarTimer=setTimeout(async()=>{
     let items=null,gerr='';
     if(getGoogleKey()){try{items=await placesAutocomplete(query);}catch(e){gerr=e.message;}}
-    if(!items){try{items=await nominatimSearch(query);}catch(e){items=[];}}
+    if(!items){try{items=await nominatimSearch(query,()=>seq===_lugarSeq);}catch(e){items=[];}}
     if(seq!==_lugarSeq)return;
     pintarSugerencias(sugg,items,pickLugar,gerr);
   },350);
@@ -1465,15 +1676,39 @@ function loadTheme(){
 }
 
 // ── SEARCHABLE SELECT ──────────────────────────────────
+function renderTiposVehiculo(){
+  const dd=document.getElementById('tipo_vehiculo_dropdown');
+  if(!dd)return;
+  dd.innerHTML='';
+  TIPOS_VEHICULO.forEach(t=>{
+    const item=document.createElement('div');
+    item.className='sv-item sv-vehicle';
+    item.dataset.action='pickSelect';
+    item.dataset.args=JSON.stringify(['tipo_vehiculo','tipo_vehiculo_search',t.nombre]);
+    const ico=document.createElement('span');
+    ico.className='sv-ico';
+    ico.innerHTML=t.svg; // SVG fijo del catálogo, no viene del usuario
+    const lbl=document.createElement('span');
+    lbl.className='sv-label';
+    lbl.textContent=t.nombre;
+    item.append(ico,lbl);
+    dd.appendChild(item);
+  });
+}
+function mostrarTiposVehiculo(){document.getElementById('tipo_vehiculo_dropdown').style.display='block';}
 function filterSelect(hiddenId, searchId){
   const val = document.getElementById(searchId).value.toLowerCase();
   const dropdown = document.getElementById(hiddenId + '_dropdown');
   dropdown.style.display = 'block';
   dropdown.querySelectorAll('.sv-item').forEach(item => {
-    item.style.display = item.textContent.toLowerCase().includes(val) ? 'block' : 'none';
+    item.style.display = item.textContent.toLowerCase().includes(val) ? '' : 'none';
   });
 }
 function pickSelect(hiddenId, searchId, value){
+  if(hiddenId==='tipo_vehiculo'){
+    tipoVehiculoAuto=false;
+    const h=document.getElementById('tipo-detectado');if(h)h.style.display='none';
+  }
   document.getElementById(hiddenId).value = value;
   document.getElementById(searchId).value = value;
   document.getElementById(hiddenId + '_dropdown').style.display = 'none';
@@ -1600,12 +1835,20 @@ function toggleSection(id){
   const body=document.getElementById(id);
   if(!body)return;
   const arrow=document.getElementById(id.replace('-body','-arrow'));
-  const isCollapsed=body.style.maxHeight==='0px'||body.style.maxHeight==='';
+  const isCollapsed=body.style.maxHeight==='0px';
+  // La altura se fija solo durante la animación; al terminar queda libre
+  // para que los campos que aparecen después (p. ej. carrera) no se corten.
+  body.style.maxHeight=body.scrollHeight+'px';
   if(isCollapsed){
-    body.style.maxHeight=body.scrollHeight+'px';
     body.style.opacity='1';
     if(arrow)arrow.style.transform='rotate(0deg)';
+    body.addEventListener('transitionend',function fin(e){
+      if(e.propertyName!=='max-height')return;
+      body.removeEventListener('transitionend',fin);
+      if(body.style.maxHeight!=='0px')body.style.maxHeight='none';
+    });
   } else {
+    void body.offsetHeight;
     body.style.maxHeight='0px';
     body.style.opacity='0';
     if(arrow)arrow.style.transform='rotate(-90deg)';
@@ -1725,7 +1968,10 @@ let editingLoteId=null;
 const LOTE_KEY='fc_lote_v1';
 
 function saveLote(){
-  try{localStorage.setItem(LOTE_KEY,JSON.stringify({data:loteEmpadronamientos,savedAt:Date.now()}));}catch(e){}
+  try{
+    if(loteEmpadronamientos.length)localStorage.setItem(LOTE_KEY,JSON.stringify({data:loteEmpadronamientos,savedAt:Date.now()}));
+    else localStorage.removeItem(LOTE_KEY);
+  }catch(e){}
 }
 function restoreLoteIfAny(){
   try{
@@ -1798,7 +2044,7 @@ function agregarAlLote(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
 
   document.getElementById('zona').value=conservarBackup.zona;
@@ -1824,23 +2070,44 @@ function actualizarBarraLote(){
 
 function abrirPanelLote(){
   const lista=document.getElementById('lote-lista');
+  lista.innerHTML='';
   if(loteEmpadronamientos.length===0){
-    lista.innerHTML='<p style="text-align:center;color:var(--muted);padding:20px;">No hay empadronamientos en el lote todavía.</p>';
-  } else {
-    lista.innerHTML=loteEmpadronamientos.map((item,idx)=>`
-      <div style="background:var(--surface2);border:1px solid ${item.id===editingLoteId?'#9b59b6':'var(--border2)'};${item.id===editingLoteId?'box-shadow:0 0 0 1px #9b59b6;':''}border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
-        <div>
-          <div style="font-weight:600;color:var(--text);font-size:.88rem;">#${escHtml(item.numEmp)} — ${escHtml(item.nombre)}${item.id===editingLoteId?' <span style="color:#9b59b6;font-size:.7rem;">(editando)</span>':''}</div>
-          <div style="font-size:.7rem;color:var(--muted);">Empadronamiento ${idx+1} de ${loteEmpadronamientos.length}</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button onclick="verUnoLote(${item.id})" style="background:var(--accent2);color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">👁</button>
-          <button onclick="editarLote(${item.id})" style="background:#9b59b6;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">✏️</button>
-          <button onclick="eliminarDelLote(${item.id})" style="background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">🗑</button>
-        </div>
-      </div>
-    `).join('');
+    const p=document.createElement('p');
+    p.className='lote-vacio';
+    p.textContent='No hay empadronamientos en el lote todavía.';
+    lista.appendChild(p);
   }
+  loteEmpadronamientos.forEach((item,idx)=>{
+    const editando=item.id===editingLoteId;
+    const row=document.createElement('div');
+    row.className='lote-item'+(editando?' editando':'');
+    const info=document.createElement('div');
+    const nom=document.createElement('div');
+    nom.className='lote-item-nombre';
+    nom.textContent=`#${item.numEmp} — ${item.nombre}`;
+    if(editando){
+      const tag=document.createElement('span');
+      tag.className='lote-item-editando';
+      tag.textContent=' (editando)';
+      nom.appendChild(tag);
+    }
+    const num=document.createElement('div');
+    num.className='lote-item-num';
+    num.textContent=`Empadronamiento ${idx+1} de ${loteEmpadronamientos.length}`;
+    info.append(nom,num);
+    const btns=document.createElement('div');
+    btns.className='lote-item-btns';
+    [['👁','ver','verUnoLote'],['✏️','editar','editarLote'],['🗑','borrar','eliminarDelLote']].forEach(([txt,cls,fn])=>{
+      const b=document.createElement('button');
+      b.className='lote-btn lote-btn--'+cls;
+      b.textContent=txt;
+      b.dataset.action=fn;
+      b.dataset.args=JSON.stringify([item.id]);
+      btns.appendChild(b);
+    });
+    row.append(info,btns);
+    lista.appendChild(row);
+  });
   document.getElementById('lote-modal').style.display='block';
   document.body.style.overflow='hidden';
 }
@@ -1950,7 +2217,7 @@ function limpiar(){
   document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
   document.getElementById('addr_estado').value='N.L.';
   document.getElementById('tatuajes_cant').value='0';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   stopScan();
   initDT();
@@ -2062,8 +2329,8 @@ function checkGenerateReady(){
   reqs.forEach(validateField);
   const allFilled=reqs.every(id=>{const el=document.getElementById(id);return el&&el.value.trim();});
   const addrOk=document.getElementById('addr_texto').value.trim()||(document.getElementById('addr_calle').value.trim()&&document.getElementById('addr_cruce').value.trim());
-  const btn=document.querySelector('.btn-generate:not([style*="verde"])');
-  if(btn&&btn.textContent.includes('GENERAR')){
+  const btn=document.getElementById('btn-generar');
+  if(btn){
     if(allFilled&&addrOk){btn.classList.add('ready');btn.classList.remove('incomplete');}
     else{btn.classList.remove('ready');btn.classList.add('incomplete');}
   }
@@ -2092,7 +2359,7 @@ setInterval(()=>{checkGenerateReady();updateProgress();},1500);
 
 // FAB: mostrar al hacer scroll, ocultar cuando el botón principal es visible
 function handleFAB(){
-  const mainBtn=document.querySelector('.btn-generate[onclick="generar()"]');
+  const mainBtn=document.getElementById('btn-generar');
   const fab=document.getElementById('fab-generate');
   if(!mainBtn||!fab)return;
   const rect=mainBtn.getBoundingClientRect();
@@ -2144,7 +2411,7 @@ async function toggleTorch(){
   try{
     torchOn=!torchOn;
     await ocrTrack.applyConstraints({advanced:[{torch:torchOn}]});
-    document.getElementById('torch-btn').style.background=torchOn?'rgba(201,168,76,.4)':'var(--surface2)';
+    document.getElementById('torch-btn').classList.toggle('on',torchOn);
   }catch(e){
     showToast('⚠️ Linterna no disponible en este dispositivo');
     torchOn=false;
@@ -2200,7 +2467,12 @@ function restoreForm(data){
 }
 function ofrecerDeshacer(){
   const t=document.getElementById('toast');
-  t.innerHTML='🗑 Formulario limpiado &nbsp;<button onclick="deshacerLimpiar()" style="background:#fff;color:#007840;border:none;border-radius:14px;padding:4px 14px;font-weight:700;font-size:.8rem;cursor:pointer;">↩ DESHACER</button>';
+  t.textContent='🗑 Formulario limpiado';
+  const b=document.createElement('button');
+  b.className='toast-btn';
+  b.dataset.action='deshacerLimpiar';
+  b.textContent='↩ DESHACER';
+  t.appendChild(b);
   t.style.display='block';
   clearTimeout(window._toastTimer);
   window._toastTimer=setTimeout(()=>{t.style.display='none';undoBackup=null;},10000);
@@ -2269,7 +2541,7 @@ function resetFormFields(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   const cs=document.getElementById('curp-status');if(cs)cs.textContent='';
   ['domicilio-suggestions','lugar-suggestions'].forEach(id=>{const s=document.getElementById(id);if(s)s.style.display='none';});
@@ -2283,12 +2555,11 @@ function applyTabState(st){
   if(st.form)restoreForm(st.form);
   negativasActivas=(st.neg||[]).slice();caracActivas=(st.carac||[]).slice();
   obsManualPersona=st.obsP||'';obsManualVeh=st.obsV||'';
-  document.querySelectorAll('[onclick^="toggleNegativa("],[onclick^="toggleCarac("]').forEach(btn=>{
-    const oc=btn.getAttribute('onclick')||'';
-    const m=oc.match(/'([^']*)'\)\s*$/);
-    if(!m)return;
-    const list=oc.startsWith('toggleNegativa(')?negativasActivas:caracActivas;
-    btn.classList.toggle('neg-active',list.includes(m[1]));
+  document.querySelectorAll('[data-action="toggleNegativa"],[data-action="toggleCarac"]').forEach(btn=>{
+    let texto='';
+    try{texto=JSON.parse(btn.dataset.args)[1];}catch(e){return;}
+    const list=btn.dataset.action==='toggleNegativa'?negativasActivas:caracActivas;
+    btn.classList.toggle('neg-active',list.includes(texto));
   });
   if(typeof updateSubmarcaList==='function')updateSubmarcaList();
 }
@@ -2399,13 +2670,45 @@ function cerrarTodasLasPestanas(){
   const pend=tabs.filter(t=>tabFormStatus(t.state.form)!=='empty'&&!t.generated).length;
   const msg=pend?`Hay ${pend} pestaña(s) con datos sin generar.\n\n¿Cerrar TODAS las pestañas y descartarlas?\n(El lote no se borra)`:'¿Cerrar todas las pestañas?\n(El lote no se borra)';
   if(!confirm(msg))return;
+  reiniciarPestanas();
+  showToast('🧹 Pestañas cerradas — turno limpio');
+}
+// Deja una sola pestaña en blanco (conserva los datos del policía)
+function reiniciarPestanas(){
   const f=buildNewTabForm(backupForm(),false);
   const t={id:newTabId(),state:{form:f,neg:[],carac:[],obsP:'',obsV:''},editLoteId:null,generated:false};
   tabs=[t];activeTabId=t.id;
   applyTabState(t.state);editingLoteId=null;updateBtnAgregarLoteLabel();initDT();
   t.state=captureTabState();
   saveTabs();renderTabs(true);
-  showToast('🧹 Pestañas cerradas — turno limpio');
+}
+
+// Fin de turno completo: borra de este teléfono pestañas, lote, fotos
+// pendientes y el último reporte. Solo quedan los datos del policía.
+function terminarTurno(){
+  syncActiveTab();
+  const pend=tabs.filter(t=>tabFormStatus(t.state.form)!=='empty'&&!t.generated).length;
+  const nLote=loteEmpadronamientos.length,nOcr=leerColaOcr().length;
+  const partes=[];
+  if(pend)partes.push(`${pend} pestaña(s) sin generar`);
+  if(nLote)partes.push(`${nLote} empadronamiento(s) en el lote`);
+  if(nOcr)partes.push(`${nOcr} foto(s) por leer`);
+  const msg='¿Terminar turno?\n\nSe borrará de este teléfono todo lo capturado'+(partes.length?':\n• '+partes.join('\n• '):'.')+'\n\nSe conservan tus datos de policía (nombre, N.E., zona y CRP).';
+  if(!confirm(msg))return;
+  loteEmpadronamientos=[];saveLote();actualizarBarraLote();
+  guardarColaOcr([]);actualizarAvisoOcr();
+  undoBackup=null;
+  try{localStorage.removeItem(DRAFT_KEY);}catch(e){}
+  reiniciarPestanas();
+  document.getElementById('output-text').value='';
+  document.getElementById('output-box').style.display='none';
+  document.getElementById('ocr-preview').style.display='none';
+  document.getElementById('ocr-preview-img').removeAttribute('src');
+  document.getElementById('ocr-summary').style.display='none';
+  document.getElementById('img-quality').style.display='none';
+  document.getElementById('scan-status').textContent='';
+  window.scrollTo({top:0,behavior:'smooth'});
+  showToast('🔒 Turno terminado — se borró lo capturado en este teléfono',3200);
 }
 
 // Genera el reporte de todas las pestañas completas y los manda al lote
@@ -2618,8 +2921,11 @@ document.addEventListener('focusin',e=>{
 });
 
 window.onload=()=>{
+  document.getElementById('app-version').textContent='Versión '+APP_VERSION;
+  renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();
   updateGoogleKeyUI();
+  actualizarAvisoOcr();
   const loteCount=restoreLoteIfAny();
   const nTabs=initTabs();
   if(loteCount&&nTabs)showToast(`📦 Lote recuperado (${loteCount}) y ${nTabs} pestaña(s) en progreso`);
@@ -2628,12 +2934,29 @@ window.onload=()=>{
 };
 
 // ── REGISTRAR SERVICE WORKER (PWA offline) ─────────────
+// Cuando se publica una versión nueva, el service worker se actualiza solo;
+// aquí se avisa para recargar (la app puede quedar abierta todo el turno).
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
+    const habiaVersion=!!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(!habiaVersion)return; // primera instalación: no hay nada que actualizar
+      const b=document.getElementById('update-banner');
+      if(b)b.style.display='flex';
+    });
     navigator.serviceWorker.register('./sw.js')
-      .then(()=>console.log('Service Worker registrado — app funcionará offline'))
+      .then(reg=>{
+        console.log('Service Worker registrado — app funcionará offline');
+        const buscar=()=>reg.update().catch(()=>{});
+        document.addEventListener('visibilitychange',()=>{if(!document.hidden)buscar();});
+        setInterval(buscar,30*60*1000);
+      })
       .catch(err=>console.log('SW no disponible (normal si se abre como archivo local):',err.message));
   });
+}
+function aplicarActualizacion(){
+  if(tabsReady)saveTabs();
+  location.reload();
 }
 
 // ── INSTALAR PWA ────────────────────────────────────────
@@ -2676,5 +2999,9 @@ function updateConnIndicator(){
     ind.title='Sin conexión — OCR y dirección por GPS no disponibles';
   }
 }
-window.addEventListener('online',()=>{updateConnIndicator();showToast('🌐 Conexión restaurada');});
+window.addEventListener('online',()=>{
+  updateConnIndicator();
+  const n=leerColaOcr().length;
+  showToast(n?`🌐 Conexión restaurada — toca "Leer ahora" para ${n} documento(s) pendiente(s)`:'🌐 Conexión restaurada',n?4000:2200);
+});
 window.addEventListener('offline',()=>{updateConnIndicator();showToast('⚠️ Sin conexión a internet');});
