@@ -22,14 +22,21 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 | `index.html` | La estructura de la página. No lleva estilos ni `onclick`. |
 | `css/styles.css` | Todos los estilos y los temas claro y oscuro. |
 | `js/catalogos.js` | Datos: categorías, estados, motivos, tipos y catálogo de vehículos. |
-| `js/app.js` | Toda la lógica de la app. |
+| `js/nucleo.js` | Base de la interfaz: eventos, avisos, tema y utilidades. Aquí va `APP_VERSION`. |
+| `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía. |
+| `js/vehiculo.js` | Autocompletado de marca y submarca, y tipo automático. |
+| `js/ubicacion.js` | GPS, mapa y búsqueda de direcciones. |
+| `js/ocr.js` | Cámara, galería, CURP, envío al Worker y fotos pendientes. |
+| `js/reporte.js` | Texto del reporte, lote, copiar y vista previa. |
+| `js/pestanas.js` | Pestañas y autoguardado. |
+| `js/app.js` | Arranque de la app, service worker e instalación. |
 | `sw.js` | Service worker: hace que la app funcione sin conexión. |
 | `manifest.json`, `icon-*.png` | Datos e íconos para instalar la app. |
 | `worker/fc-ocr.js` | Copia del Worker de Cloudflare que guarda la API key de Groq. |
 
 ### Cómo se conectan los botones
 
-Los elementos del HTML declaran la función que usan con atributos `data-*`, y un solo manejador en `js/app.js` las llama ("EVENTOS DE LA INTERFAZ"):
+Los elementos del HTML declaran la función que usan con atributos `data-*`, y un solo manejador en `js/nucleo.js` las llama ("EVENTOS DE LA INTERFAZ"):
 
 ```html
 <button data-action="limpiarSeccion" data-args='["persona"]'>🗑 Limpiar</button>
@@ -43,7 +50,7 @@ Los elementos del HTML declaran la función que usan con atributos `data-*`, y u
 
 1. Edita los archivos **del repositorio** (no subas una copia vieja de `index.html` encima).
 2. Sube la versión en **dos lugares**:
-   - `APP_VERSION` al inicio de `js/app.js` (p. ej. `'20'`).
+   - `APP_VERSION` al inicio de `js/nucleo.js` (p. ej. `'20'`).
    - `CACHE` en `sw.js` (p. ej. `'fc-empadronamiento-v20'`).
 3. Une el cambio a `main`. GitHub Pages lo publica en 1–2 minutos.
 4. Los teléfonos con la app abierta ven el aviso **"Hay una versión nueva"**. La versión que tiene cada teléfono aparece al pie de la página.
@@ -74,7 +81,7 @@ En el Worker, en **Configuración → Variables y secretos**:
 
 - Para cambiar el código, edita `worker/fc-ocr.js`, pégalo en el editor del Worker y toca **Implementar**.
 - Si cambias la dirección donde se publica la app, actualiza `ORIGENES_PERMITIDOS`.
-- Si Groq retira un modelo, actualiza `OCR_MODELOS` en `js/app.js` y `MODELOS_PERMITIDOS` en el Worker.
+- Si Groq retira un modelo, actualiza `OCR_MODELOS` en `js/ocr.js` y `MODELOS_PERMITIDOS` en el Worker.
 
 ### Mensajes de error del OCR
 

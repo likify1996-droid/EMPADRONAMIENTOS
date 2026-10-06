@@ -1,5 +1,5 @@
 // Catálogos de datos de la app (categorías, estados, vehículos, motivos).
-// Se cargan antes de app.js.
+// Se cargan antes que el resto de los archivos de js/.
 
 const SUBCATS={
   'Entretenimiento':['Bar o Centro Nocturno','Table dance','Centros de apuestas','Evento masivo','Otro'],
