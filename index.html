@@ -1412,7 +1412,7 @@ async function ensureLeaflet(){
 }
 async function ensureHeic(){
   if(typeof heic2any==='function')return;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js','sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL');
 }
 
 // ── MAPA: MARCAR PIN MANUAL ────────────────────────────
@@ -1673,9 +1673,19 @@ function showPreview(canvas){
   prev.style.display='block';
 }
 
-// ── OCR CON GROQ ──────────────────────────────────────
-const _k1='gsk_Iabi',_k2='tnXL5zEx',_k3='DNUjj14e',_k4='WGdyb3FY',_k5='ABEQEWxE',_k6='LjCI8HCu',_k7='34Wf1qOd';
-function getGroqKey(){return _k1+_k2+_k3+_k4+_k5+_k6+_k7;}
+// ── OCR CON GROQ (vía proxy en Cloudflare Workers) ─────
+// La key de Groq vive como secreto en el Worker, nunca en el teléfono.
+const OCR_PROXY_URL='https://fc-ocr.TU-USUARIO.workers.dev';
+const OCR_TOKEN_KEY='fc_ocr_token';
+function getOcrToken(){
+  let t='';
+  try{t=localStorage.getItem(OCR_TOKEN_KEY)||'';}catch(e){}
+  if(!t){
+    t=(prompt('Clave de acceso para OCR (pídela a tu mando):')||'').trim();
+    if(t){try{localStorage.setItem(OCR_TOKEN_KEY,t);}catch(e){}}
+  }
+  return t;
+}
 
 async function captureOCR(){
   const status=document.getElementById('scan-status');
@@ -1777,9 +1787,9 @@ Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin come
 
   let resp;
   try{
-    resp=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    resp=await fetch(OCR_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+getGroqKey()},
+      headers:{'Content-Type':'application/json','X-FC-Token':getOcrToken()},
       signal:controller.signal,
       body:JSON.stringify(bodyPayload)
     });
@@ -1798,6 +1808,8 @@ Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin come
       const err=await resp.json();
       errMsg=err.error?.message||errMsg;
     }catch(e){}
+    // Clave mal escrita o cambiada: se borra para pedirla de nuevo
+    if(resp.status===401){try{localStorage.removeItem(OCR_TOKEN_KEY);}catch(e){}}
     throw new Error(errMsg);
   }
 
