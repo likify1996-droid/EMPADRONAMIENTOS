@@ -8,14 +8,17 @@ async function startOCR(){
   const status=document.getElementById('scan-status');
   const cont=document.getElementById('ocr-container');
   try{
-    ocrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
+    // Más resolución que antes: con el recorte al marco, la credencial sigue
+    // teniendo suficientes pixeles para leer el CURP
+    ocrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}});
     document.getElementById('ocr-video').srcObject=ocrStream;
     document.getElementById('ocr-video').play();
-    ocrZoom=1;
+    ocrZoom=1;ocrZoomCss=1;
     ocrTrack=ocrStream.getVideoTracks()[0]||null;
     document.getElementById('ocr-video').style.transform='scale(1)';
     cont.style.display='block';
-    status.textContent='📸 Enfoca el documento — usa + / − para zoom';
+    actualizarMarcoUI();
+    status.textContent=marcoActivo()?'📸 Coloca la credencial dentro del marco — usa + / − para zoom':'📸 Enfoca el documento — usa + / − para zoom';
   }catch(e){
     status.textContent='❌ Sin acceso a la cámara. Verifica permisos.';
   }
@@ -272,9 +275,18 @@ async function captureOCR(){
   canvas.width=video.videoWidth;
   canvas.height=video.videoHeight;
   canvas.getContext('2d').drawImage(video,0,0);
+  // La foto completa se guarda en el teléfono; a la IA va solo el marco
+  savePhotoToDevice(canvas);
+  if(marcoActivo()){
+    const r=recorteDelMarco(video);
+    const tmp=document.createElement('canvas');
+    tmp.width=Math.round(r.w);tmp.height=Math.round(r.h);
+    tmp.getContext('2d').drawImage(canvas,r.x,r.y,r.w,r.h,0,0,tmp.width,tmp.height);
+    canvas.width=tmp.width;canvas.height=tmp.height;
+    canvas.getContext('2d').drawImage(tmp,0,0);
+  }
   stopOCR();
   document.getElementById('ocr-summary').style.display='none';
-  savePhotoToDevice(canvas);
   showPreview(canvas);
   checkImageQuality(canvas);
   const base64=canvasParaOCR(canvas);
@@ -647,19 +659,70 @@ function fillOCRFields(obj,opts){
 
 // ── OCR ZOOM ───────────────────────────────────────────
 let ocrZoom = 1;
+let ocrZoomCss = 1;
 let ocrTrack = null;
 function zoomOCR(dir){
   ocrZoom = Math.min(Math.max(ocrZoom + dir * 0.5, 1), 5);
-  if(ocrTrack){
-    try{
-      ocrTrack.applyConstraints({advanced:[{zoom: ocrZoom}]});
-    }catch(e){
-      // Zoom not supported, use CSS transform
-      document.getElementById('ocr-video').style.transform = `scale(${ocrZoom})`;
-      document.getElementById('ocr-video').style.transformOrigin = 'center center';
-    }
+  // Zoom de la cámara si el teléfono lo tiene; si no, se amplía la imagen.
+  // (Antes el error del zoom no se atrapaba y en esos teléfonos no hacía nada.)
+  const caps=ocrTrack&&ocrTrack.getCapabilities?ocrTrack.getCapabilities():{};
+  if(caps.zoom){
+    const z=Math.min(Math.max(ocrZoom,caps.zoom.min),caps.zoom.max);
+    ocrTrack.applyConstraints({advanced:[{zoom:z}]}).catch(zoomPorImagen);
+  }else{
+    zoomPorImagen();
   }
 }
+function zoomPorImagen(){
+  ocrZoomCss=ocrZoom;
+  const v=document.getElementById('ocr-video');
+  v.style.transform=`scale(${ocrZoom})`;
+  v.style.transformOrigin='center center';
+}
+
+// ── MARCO GUÍA DE LA CÁMARA ─────────────────────────────
+// La foto que va a la IA se recorta al marco (tamaño de credencial) con un
+// pequeño margen, así la INE ocupa toda la imagen y se lee mejor. Con 🔲 se
+// apaga para documentos grandes (p. ej. tarjeta de circulación en hoja).
+const MARCO_KEY='fc_marco_ocr',PROPORCION_CREDENCIAL=85.6/54,MARGEN_MARCO=0.06;
+function marcoActivo(){try{return localStorage.getItem(MARCO_KEY)!=='0';}catch(e){return true;}}
+function toggleMarco(){
+  const on=!marcoActivo();
+  try{localStorage.setItem(MARCO_KEY,on?'1':'0');}catch(e){}
+  actualizarMarcoUI();
+  showToast(on?'🔲 Marco activado: se lee solo lo que está dentro':'Marco apagado: se envía la foto completa',2600);
+}
+function actualizarMarcoUI(){
+  const on=marcoActivo();
+  document.getElementById('ocr-marco').style.display=on?'block':'none';
+  document.getElementById('marco-btn').classList.toggle('on',on);
+  posicionarMarco();
+}
+// Rectángulo del marco dentro del video, en pixeles de pantalla
+function rectMarco(w,h){
+  let fw=w*0.88,fh=fw/PROPORCION_CREDENCIAL;
+  if(fh>h*0.85){fh=h*0.85;fw=fh*PROPORCION_CREDENCIAL;}
+  return{x:(w-fw)/2,y:(h-fh)/2,w:fw,h:fh};
+}
+function posicionarMarco(){
+  const v=document.getElementById('ocr-video'),m=document.getElementById('ocr-marco');
+  if(!v.clientWidth)return;
+  const r=rectMarco(v.clientWidth,v.clientHeight);
+  Object.assign(m.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
+}
+// Pasa el marco de la pantalla a pixeles del video (object-fit:cover + zoom de imagen)
+function recorteDelMarco(video){
+  const w=video.clientWidth,h=video.clientHeight,vw=video.videoWidth,vh=video.videoHeight;
+  const s=Math.max(w/vw,h/vh)*ocrZoomCss;
+  const ox=(w-vw*s)/2,oy=(h-vh*s)/2;
+  const m=rectMarco(w,h);
+  let x=(m.x-m.w*MARGEN_MARCO-ox)/s,y=(m.y-m.h*MARGEN_MARCO-oy)/s;
+  let cw=m.w*(1+2*MARGEN_MARCO)/s,ch=m.h*(1+2*MARGEN_MARCO)/s;
+  x=Math.max(0,x);y=Math.max(0,y);
+  return{x,y,w:Math.min(cw,vw-x),h:Math.min(ch,vh-y)};
+}
+document.getElementById('ocr-video').addEventListener('loadedmetadata',posicionarMarco);
+window.addEventListener('resize',posicionarMarco);
 
 // ── LINTERNA ────────────────────────────────────────────
 let torchOn=false;

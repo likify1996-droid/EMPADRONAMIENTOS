@@ -120,11 +120,15 @@
   </div>
   <div id="ocr-summary" class="hidden"></div>
   <div id="ocr-container" class="hidden">
-    <video id="ocr-video" playsinline muted></video>
+    <div class="ocr-visor">
+      <video id="ocr-video" playsinline muted></video>
+      <div id="ocr-marco"><span>Coloca la credencial dentro del marco</span></div>
+    </div>
     <div class="ocr-controls">
       <button class="ocr-btn" data-action="zoomOCR" data-args="[-1]">−</button>
       <button class="ocr-btn" data-action="zoomOCR" data-args="[1]">+</button>
       <button class="ocr-btn" id="torch-btn" data-action="toggleTorch">🔦</button>
+      <button class="ocr-btn" id="marco-btn" data-action="toggleMarco" title="Marco de credencial (apágalo para hojas grandes)">🔲</button>
       <button class="ocr-btn ocr-btn--capturar" data-action="captureOCR">📸 Capturar</button>
       <button class="ocr-btn ocr-btn--cerrar" data-action="stopOCR">✕</button>
     </div>

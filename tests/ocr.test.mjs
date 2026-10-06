@@ -93,4 +93,33 @@ export const pruebas = {
     assert.deepEqual(r, { nombre: '', zona: 'D1 C7', lote: null, cola: null, tabs: 1 });
     await ctx.close();
   },
+  async 'cámara: el marco recorta la credencial'({ url, browser }) {
+    let enviada = null;
+    const { ctx, page, errores } = await nuevaPagina(browser, url, { ocr: req => { enviada = JSON.parse(req.postData()).messages[0].content[1].image_url.url; return respuestaOcr(INE); } });
+    await page.evaluate(() => { savePhotoToDevice = () => {}; }); // sin descargas en la prueba
+    await page.getByRole('button', { name: '📸 Cámara' }).click();
+    await page.waitForFunction(() => document.getElementById('ocr-video').videoWidth > 0);
+    await page.waitForTimeout(300);
+    const marco = await page.locator('#ocr-marco').boundingBox();
+    assert.ok(marco && Math.abs(marco.width / marco.height - 85.6 / 54) < 0.02, 'el marco tiene forma de credencial');
+    await page.getByRole('button', { name: '📸 Capturar' }).click();
+    await page.waitForFunction(() => /Listo/.test(document.getElementById('scan-status').textContent));
+    const dims = await page.evaluate(src => new Promise(r => { const i = new Image(); i.onload = () => r([i.width, i.height]); i.src = src; }), enviada);
+    const prop = dims[0] / dims[1];
+    assert.ok(prop > 1.4 && prop < 1.75, `la foto enviada es solo el marco (${dims.join('x')})`);
+    assert.equal(await page.locator('#nombre').inputValue(), 'Perez Lopez Ana');
+    // Con el marco apagado se envía la foto completa
+    await page.getByRole('button', { name: '🔄 Releer' }).click();
+    await page.waitForFunction(() => document.getElementById('ocr-video').videoWidth > 0);
+    await page.locator('#marco-btn').click();
+    assert.equal(await page.locator('#ocr-marco').isVisible(), false);
+    await page.evaluate(() => { document.getElementById('scan-status').textContent = ''; });
+    await page.getByRole('button', { name: '📸 Capturar' }).click();
+    await page.waitForFunction(() => /Listo/.test(document.getElementById('scan-status').textContent));
+    const completa = await page.evaluate(src => new Promise(r => { const i = new Image(); i.onload = () => r([i.width, i.height]); i.src = src; }), enviada);
+    const v = await page.evaluate(() => [document.getElementById('ocr-video').videoWidth, document.getElementById('ocr-video').videoHeight]);
+    assert.ok(Math.abs(completa[0] / completa[1] - v[0] / v[1]) < 0.01, `foto completa ${completa.join('x')} vs video ${v.join('x')}`);
+    assert.deepEqual(errores, []);
+    await ctx.close();
+  },
 };

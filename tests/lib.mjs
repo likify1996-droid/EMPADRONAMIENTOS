@@ -23,7 +23,8 @@ export function iniciarServidor() {
 export function abrirNavegador() {
   // En la nube de Claude Code el Chromium está en otra ruta; en GitHub usa el de Playwright
   const executablePath = process.env.CHROMIUM_PATH || undefined;
-  return chromium.launch({ executablePath });
+  // Cámara simulada para probar el escaneo con cámara y el marco
+  return chromium.launch({ executablePath, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
 }
 
 export const WORKER = 'https://fc-ocr.therts649.workers.dev';
@@ -31,7 +32,7 @@ export const WORKER = 'https://fc-ocr.therts649.workers.dev';
 // Página nueva con todo internet bloqueado salvo lo que se simule.
 // ocr: función (petición) → {status, body} para el Worker.
 export async function nuevaPagina(browser, url, { ocr, nominatim, sw = false, colorScheme, dialogos } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 412, height: 900 }, serviceWorkers: sw ? 'allow' : 'block', colorScheme });
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 900 }, serviceWorkers: sw ? 'allow' : 'block', colorScheme, permissions: ['camera'] });
   const page = await ctx.newPage();
   const errores = [];
   page.on('pageerror', e => errores.push(e.message));
