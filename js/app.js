@@ -69,14 +69,16 @@ function pintarAutocomplete(inId,listId,hits){
 }
 function acFilter(inId,listId,data){
   if(typeof data==='string')data=AC_LISTAS[data]||[];
-  const val=document.getElementById(inId).value.toLowerCase();
+  // Sin acentos ni mayúsculas: "nuevo leon" encuentra "Nuevo León"
+  const val=normVeh(document.getElementById(inId).value);
   if(!val){document.getElementById(listId).classList.remove('show');return;}
-  pintarAutocomplete(inId,listId,data.filter(d=>d.toLowerCase().includes(val)).slice(0,8));
+  pintarAutocomplete(inId,listId,data.filter(d=>normVeh(d).includes(val)).slice(0,8));
 }
 function acPick(inId,listId,el){
   document.getElementById(inId).value=el.textContent;
   document.getElementById(listId).classList.remove('show');
-  if(inId==='marca')updateSubmarcaList();
+  if(inId==='marca'){updateSubmarcaList();aplicarDeteccionVehiculo();}
+  if(inId==='submarca')aplicarDeteccionVehiculo();
 }
 document.addEventListener('click',e=>{
   document.querySelectorAll('.autocomplete-list').forEach(l=>{
@@ -91,20 +93,63 @@ function onMarcaInput(){
   updateSubmarcaList();
 }
 function updateSubmarcaList(){
-  const marca=document.getElementById('marca').value.trim();
+  const marca=buscarMarca(document.getElementById('marca').value);
   const modelos=SUBMARCAS[marca]||[];
   const sub=document.getElementById('submarca');
   if(modelos.length&&sub.value==='')sub.placeholder=modelos[0]+'...';
 }
 function acSubmarca(){
-  const marca=document.getElementById('marca').value.trim();
-  const val=document.getElementById('submarca').value.toLowerCase();
+  const marca=buscarMarca(document.getElementById('marca').value);
+  const val=normVeh(document.getElementById('submarca').value);
   const list=document.getElementById('ac_submarca');
   const base=SUBMARCAS[marca]||[];
   // Si hay lista de la marca, filtrar de ella; si no, buscar en todos
-  const pool=base.length?base:Object.values(SUBMARCAS).flat();
+  const pool=base.length?base:TODAS_SUBMARCAS;
   if(!val){list.classList.remove('show');return;}
-  pintarAutocomplete('submarca','ac_submarca',pool.filter(d=>d.toLowerCase().includes(val)).slice(0,8));
+  pintarAutocomplete('submarca','ac_submarca',pool.filter(d=>normVeh(d).includes(val)).slice(0,8));
+}
+
+// ── TIPO DE VEHÍCULO AUTOMÁTICO ────────────────────────
+// Con la submarca (y la marca si la hay) se busca el modelo en el catálogo
+// y se llena el tipo. Si el tipo lo eligió el policía a mano, no se cambia:
+// solo se muestra lo que dice el catálogo (p. ej. eligió "Taxi" para un Versa).
+let tipoVehiculoAuto=false;
+function aplicarDeteccionVehiculo(){
+  const hint=document.getElementById('tipo-detectado');
+  const r=detectarVehiculo(v('marca'),v('submarca'));
+  if(!r){hint.style.display='none';return null;}
+  // Completar o corregir la marca (p. ej. "nissan" → "Nissan")
+  const marcaActual=v('marca');
+  if(r.marca&&(!marcaActual||buscarMarca(marcaActual)===r.marca)&&marcaActual!==r.marca){
+    fill('marca',r.marca);
+    updateSubmarcaList();
+  }
+  // "versa" → "Versa" (solo si escribió el modelo exacto, no "Versa Advance")
+  if(r.exacto&&v('submarca')!==r.modelo)document.getElementById('submarca').value=r.modelo;
+  if(!r.tipo){hint.style.display='none';return r;}
+  const actual=v('tipo_vehiculo');
+  const nombre=[r.marca,r.modelo].filter(Boolean).join(' ');
+  if(!actual||tipoVehiculoAuto){
+    pickSelect('tipo_vehiculo','tipo_vehiculo_search',r.tipo);
+    document.getElementById('tipo_vehiculo_search').classList.add('filled');
+    tipoVehiculoAuto=true;
+    hint.textContent=`🔎 Tipo detectado: ${r.tipo} (${nombre})`;
+    hint.style.display='block';
+  }else if(actual!==r.tipo){
+    hint.textContent=`ℹ️ Según el catálogo, ${nombre} es ${r.tipo}`;
+    hint.style.display='block';
+  }else{
+    hint.style.display='none';
+  }
+  return r;
+}
+function ocultarTipoDetectado(){
+  tipoVehiculoAuto=false;
+  const h=document.getElementById('tipo-detectado');if(h)h.style.display='none';
+}
+function onSubmarcaBlur(){
+  // Espera a que termine un posible clic en la lista de sugerencias
+  setTimeout(aplicarDeteccionVehiculo,150);
 }
 
 // ── DIRECCIÓN ──────────────────────────────────────────
@@ -963,20 +1008,26 @@ function fillOCRFields(obj){
       // Menor de edad
       if(obj.menor===true){document.getElementById('vulnerable').value='Sí';filled.push('Sector vulnerable (menor)');}
     } else if(obj.tipo==='circulacion'){
-      if(obj.tipo_vehiculo){
-        const tv=obj.tipo_vehiculo.toLowerCase();
-        const tvWord=tv.split(' ')[0];
-        const items=document.querySelectorAll('#tipo_vehiculo_dropdown .sv-item');
-        for(const item of items){
-          if(item.textContent.toLowerCase().includes(tvWord)){
-            pickSelect('tipo_vehiculo','tipo_vehiculo_search',item.textContent.trim());
-            filled.push('Tipo de vehículo');
-            break;
-          }
+      if(obj.marca){fill('marca',buscarMarca(obj.marca)||toTitleCase(obj.marca));updateSubmarcaList();filled.push('Marca');}
+      if(obj.submarca){
+        const det=detectarVehiculo(obj.marca,obj.submarca);
+        fill('submarca',det?det.modelo:toTitleCase(obj.submarca));
+        filled.push('Submarca');
+      }
+      // Tipo: primero por el modelo (catálogo); si no se reconoce, por lo
+      // que dice la tarjeta ("SEDAN 4 PTAS", "VAGONETA"...)
+      const antesTipo=v('tipo_vehiculo');
+      if(!antesTipo)tipoVehiculoAuto=true;
+      const det=aplicarDeteccionVehiculo();
+      if(!(det&&det.tipo)&&!antesTipo){
+        const tt=tipoDesdeTexto(obj.tipo_vehiculo);
+        if(tt){
+          pickSelect('tipo_vehiculo','tipo_vehiculo_search',tt);
+          document.getElementById('tipo_vehiculo_search').classList.add('filled');
+          tipoVehiculoAuto=true;
         }
       }
-      if(obj.marca){fillTitle('marca',obj.marca);updateSubmarcaList();filled.push('Marca');}
-      if(obj.submarca){fillTitle('submarca',obj.submarca);filled.push('Submarca');}
+      if(!antesTipo&&v('tipo_vehiculo'))filled.push('Tipo de vehículo');
       if(obj.anio&&/^\d{4}$/.test(obj.anio)){fill('anio',obj.anio);filled.push('Año');}
       if(obj.placas&&obj.placas.length>=5){fill('placas',obj.placas.toUpperCase());filled.push('Placas');}
       if(obj.estado_placas){const em=ESTADOS.find(e=>e.toLowerCase().includes(obj.estado_placas.toLowerCase()));if(em){fill('estado_placas',em);filled.push('Estado de placas');}}
@@ -1028,7 +1079,7 @@ function nuevoEmpadronamiento(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
 
   // Restaurar datos del policía si eligió conservar
@@ -1116,8 +1167,14 @@ function limpiarSeccion(sec){
     document.getElementById('fotos_si').style.opacity='1';
     document.getElementById('fotos_no').style.opacity='1';
     document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
-  document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
+    // Solo lo de la persona: antes también borraba las características del vehículo
+    negativasActivas=[];obsManualPersona='';
+    document.querySelectorAll('.neg-btn.neg-active').forEach(b=>b.classList.remove('neg-active'));
+  }
+  if(sec==='vehiculo'){
+    caracActivas=[];obsManualVeh='';
+    document.querySelectorAll('.carac-btn.neg-active').forEach(b=>b.classList.remove('neg-active'));
+    ocultarTipoDetectado();
   }
   if(sec==='servicio'){
     document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
@@ -1538,6 +1595,10 @@ function filterSelect(hiddenId, searchId){
   });
 }
 function pickSelect(hiddenId, searchId, value){
+  if(hiddenId==='tipo_vehiculo'){
+    tipoVehiculoAuto=false;
+    const h=document.getElementById('tipo-detectado');if(h)h.style.display='none';
+  }
   document.getElementById(hiddenId).value = value;
   document.getElementById(searchId).value = value;
   document.getElementById(hiddenId + '_dropdown').style.display = 'none';
@@ -1870,7 +1931,7 @@ function agregarAlLote(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
 
   document.getElementById('zona').value=conservarBackup.zona;
@@ -2043,7 +2104,7 @@ function limpiar(){
   document.getElementById('addr-preview').textContent='La dirección aparecerá aquí...';
   document.getElementById('addr_estado').value='N.L.';
   document.getElementById('tatuajes_cant').value='0';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   stopScan();
   initDT();
@@ -2367,7 +2428,7 @@ function resetFormFields(){
   document.getElementById('fotos_si').style.opacity='1';
   document.getElementById('fotos_no').style.opacity='1';
   document.getElementById('escolaridad_extra').style.display='none';
-  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';
+  negativasActivas=[];caracActivas=[];obsManualPersona='';obsManualVeh='';ocultarTipoDetectado();
   document.querySelectorAll('.neg-active').forEach(b=>b.classList.remove('neg-active'));
   const cs=document.getElementById('curp-status');if(cs)cs.textContent='';
   ['domicilio-suggestions','lugar-suggestions'].forEach(id=>{const s=document.getElementById(id);if(s)s.style.display='none';});
