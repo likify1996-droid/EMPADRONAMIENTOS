@@ -13,7 +13,7 @@ window.addEventListener('unhandledrejection',function(ev){
 
 // Versión de la app: súbela junto con CACHE en sw.js en cada cambio publicado.
 // Se muestra al pie de la página para saber qué versión tiene cada teléfono.
-const APP_VERSION='20';
+const APP_VERSION='21';
 
 // ── EVENTOS DE LA INTERFAZ ─────────────────────────────
 // El HTML no lleva onclick/oninput: cada elemento declara la función que usa

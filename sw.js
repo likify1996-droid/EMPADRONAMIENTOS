@@ -1,4 +1,4 @@
-const CACHE = 'fc-empadronamiento-v20';
+const CACHE = 'fc-empadronamiento-v21';
 const ASSETS = [
   './index.html',
   './css/styles.css',
@@ -11,6 +11,13 @@ const ASSETS = [
   './js/reporte.js',
   './js/pestanas.js',
   './js/app.js',
+  './fonts/rajdhani-latin-500-normal.woff2',
+  './fonts/rajdhani-latin-600-normal.woff2',
+  './fonts/rajdhani-latin-700-normal.woff2',
+  './fonts/exo-2-latin-300-normal.woff2',
+  './fonts/exo-2-latin-400-normal.woff2',
+  './fonts/exo-2-latin-500-normal.woff2',
+  './fonts/exo-2-latin-600-normal.woff2',
   './manifest.json',
   './icon-logo.png',
   './icon-192.png',
@@ -87,7 +94,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Librerías y fuentes externas (Leaflet, heic2any, Google Fonts): caché
+  // Librerías externas (Leaflet, heic2any): caché
   // primero y se va guardando lo descargado para usarlo sin conexión.
   e.respondWith(
     caches.match(e.request).then(cached => {
