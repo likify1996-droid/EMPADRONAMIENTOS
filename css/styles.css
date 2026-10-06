@@ -706,3 +706,9 @@ input.campo-revisar,textarea.campo-revisar{border-color:#f0a000!important;backgr
 .btn-dictado.grabando{background:var(--danger);border-color:var(--danger);animation:dotPulse 1.2s ease-in-out infinite;}
 .output-header .row{flex:1;justify-content:flex-end;}
 .output-header .btn-copy{padding:8px 11px;white-space:nowrap;}
+
+/* ── LECTURA: opciones y captura automática ── */
+.scan-opciones{display:flex;justify-content:center;margin-top:8px;position:relative;z-index:1;}
+#auto-btn.on{background:rgba(0,184,86,.35);}
+#ocr-marco.listo{border-color:var(--green);border-style:solid;}
+.ocr-controls .ocr-btn{padding:10px 11px;}

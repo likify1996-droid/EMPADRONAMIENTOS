@@ -10,11 +10,19 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
   - Se autoguarda en el teléfono y se borra solo a las 12 horas.
 - **OCR con IA** de INE y tarjeta de circulación (Groq, a través de un Worker de Cloudflare).
   - El CURP se valida y de él se sacan la fecha de nacimiento, el sexo y el estado.
+  - Lee INE, licencias de conducir y pasaportes. El nombre siempre queda como "Apellidos Nombre(s)" (la licencia lo imprime al revés que la INE), comprobado con la CURP, y la licencia se anota en Datos adicionales con su tipo, folio y vigencia.
   - Sin señal, la foto se guarda y se lee después con **▶ Leer ahora**.
 - **Ubicación:** GPS, mapa con pin y búsqueda de direcciones. Usa OpenStreetMap (Nominatim) o, opcionalmente, Google Places con una llave propia.
 - **Catálogo de vehículos:** al elegir o escanear la submarca se llena solo el tipo de vehículo, y también la marca si falta.
 - **🔒 Terminar turno:** borra del teléfono todo lo capturado y conserva solo los datos del policía.
 - **Marco guía en la cámara:** a la IA se envía solo lo que está dentro del marco de la credencial. Con 🔲 se apaga para documentos grandes.
+- **Lectura con fotos difíciles:**
+  - Toma 5 fotos seguidas y usa (y guarda) solo la más nítida.
+  - Con 🤖 la foto se toma sola cuando la credencial está quieta y enfocada.
+  - Avisa si hay reflejo o si la foto está borrosa.
+  - Se envía a color. Se puede cambiar a blanco y negro con "Lectura: a color" para comparar.
+  - Si la CURP, el NIV o el código del reverso no cuadran, vuelve a leer la misma foto con otro modelo y se queda con la mejor lectura.
+  - El reverso de la INE (renglones IDMEX) da fecha de nacimiento y sexo verificados con sus dígitos de control.
 - **Revisión de datos:** NIV/serie (17 caracteres y dígito verificador), placas, teléfono de 10 dígitos y que la edad cuadre con la fecha de nacimiento. Lo dudoso se marca en naranja; avisa pero no impide generar.
 - **📤 WhatsApp:** envía el reporte o el lote completo sin copiar y pegar.
 - **🎤 Dictado por voz** en Datos adicionales, Tatuajes y Observaciones (necesita internet).
@@ -32,6 +40,8 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 | `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía, avisos de revisión y dictado. |
 | `js/vehiculo.js` | Autocompletado de marca y submarca, y tipo automático. |
 | `js/ubicacion.js` | GPS, mapa y búsqueda de direcciones. |
+| `js/imagen.js` | Nitidez, reflejo y movimiento de la foto (ráfaga, avisos y foto automática). |
+| `js/documentos.js` | Orden del nombre según el documento (INE, licencia, pasaporte), comprobado con la CURP. |
 | `js/ocr.js` | Cámara, galería, CURP, envío al Worker y fotos pendientes. |
 | `js/reporte.js` | Texto del reporte, lote, copiar, WhatsApp, PDF y vista previa. |
 | `js/pestanas.js` | Pestañas y autoguardado. |

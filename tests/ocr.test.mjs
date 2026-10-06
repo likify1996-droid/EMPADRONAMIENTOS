@@ -96,7 +96,7 @@ export const pruebas = {
   async 'cámara: el marco recorta la credencial'({ url, browser }) {
     let enviada = null;
     const { ctx, page, errores } = await nuevaPagina(browser, url, { ocr: req => { enviada = JSON.parse(req.postData()).messages[0].content[1].image_url.url; return respuestaOcr(INE); } });
-    await page.evaluate(() => { savePhotoToDevice = () => {}; }); // sin descargas en la prueba
+    await page.evaluate(() => { window.__guardadas = 0; savePhotoToDevice = () => { window.__guardadas++; }; }); // cuenta descargas
     await page.getByRole('button', { name: '📸 Cámara' }).click();
     await page.waitForFunction(() => document.getElementById('ocr-video').videoWidth > 0);
     await page.waitForTimeout(300);
@@ -108,6 +108,7 @@ export const pruebas = {
     const prop = dims[0] / dims[1];
     assert.ok(prop > 1.4 && prop < 1.75, `la foto enviada es solo el marco (${dims.join('x')})`);
     assert.equal(await page.locator('#nombre').inputValue(), 'Perez Lopez Ana');
+    assert.equal(await page.evaluate(() => window.__guardadas), 1, 'de la ráfaga solo se guarda la mejor foto');
     // Con el marco apagado se envía la foto completa
     await page.getByRole('button', { name: '🔄 Releer' }).click();
     await page.waitForFunction(() => document.getElementById('ocr-video').videoWidth > 0);

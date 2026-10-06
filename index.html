@@ -94,12 +94,13 @@
 <!-- SCANNER — OCR -->
 <div class="scan-box">
   <h3>📷 ESCANEAR DOCUMENTO CON IA</h3>
-  <div class="scan-hint">Toma foto de INE o tarjeta de circulación</div>
+  <div class="scan-hint">INE (frente o reverso), licencia, pasaporte o tarjeta de circulación</div>
   <div class="scan-btns">
     <button class="btn-scan" id="btn-abrir-camara" data-action="startOCR">📸 Cámara</button>
     <button class="btn-scan" data-action="abrirGaleria">🖼 Galería</button>
     <button class="btn-scan hidden" id="btn-releer" data-action="startOCR">🔄 Releer</button>
   </div>
+  <div class="scan-opciones"><button type="button" class="mini-btn mini-btn--accent" id="modo-ocr-btn" data-action="toggleModoOcr">🎨 Lectura: a color</button></div>
   <input type="file" id="gallery-input" class="hidden" accept="image/*" multiple data-change="processGalleryImages" data-args='["$el"]'>
   <div id="ocr-pendientes" class="ocr-pendientes hidden">
     <span id="ocr-pendientes-txt"></span>
@@ -129,6 +130,7 @@
       <button class="ocr-btn" data-action="zoomOCR" data-args="[1]">+</button>
       <button class="ocr-btn" id="torch-btn" data-action="toggleTorch">🔦</button>
       <button class="ocr-btn" id="marco-btn" data-action="toggleMarco" title="Marco de credencial (apágalo para hojas grandes)">🔲</button>
+      <button class="ocr-btn" id="auto-btn" data-action="toggleAutoCaptura" title="Foto automática cuando está quieta y enfocada">🤖</button>
       <button class="ocr-btn ocr-btn--capturar" data-action="captureOCR">📸 Capturar</button>
       <button class="ocr-btn ocr-btn--cerrar" data-action="stopOCR">✕</button>
     </div>
@@ -496,6 +498,8 @@
 <script src="js/formulario.js"></script>
 <script src="js/vehiculo.js"></script>
 <script src="js/ubicacion.js"></script>
+<script src="js/imagen.js"></script>
+<script src="js/documentos.js"></script>
 <script src="js/ocr.js"></script>
 <script src="js/reporte.js"></script>
 <script src="js/pestanas.js"></script>

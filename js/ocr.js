@@ -18,6 +18,7 @@ async function startOCR(){
     document.getElementById('ocr-video').style.transform='scale(1)';
     cont.style.display='block';
     actualizarMarcoUI();
+    iniciarAutoCaptura();
     status.textContent=marcoActivo()?'📸 Coloca la credencial dentro del marco — usa + / − para zoom':'📸 Enfoca el documento — usa + / − para zoom';
   }catch(e){
     status.textContent='❌ Sin acceso a la cámara. Verifica permisos.';
@@ -25,6 +26,7 @@ async function startOCR(){
 }
 
 function stopOCR(){
+  detenerAutoCaptura();
   if(ocrStream){ocrStream.getTracks().forEach(t=>t.stop());ocrStream=null;}
   document.getElementById('ocr-container').style.display='none';
   document.getElementById('scan-status').textContent='';
@@ -156,7 +158,10 @@ function checkImageQuality(canvas){
   qi.style.display='block';
   if(brightness<50){qi.innerHTML='⚠️ <span class="txt-warn">Imagen muy oscura — mejora la iluminación</span>';return false;}
   if(brightness>220){qi.innerHTML='⚠️ <span class="txt-warn">Imagen sobreexpuesta — reduce la luz</span>';return false;}
-  if(variance<200){qi.innerHTML='⚠️ <span class="txt-warn">Imagen borrosa — enfoca el documento</span>';return false;}
+  // Reflejo y nitidez sobre una copia chica (ver js/imagen.js)
+  const gris=grisReducido(canvas);
+  if(fraccionReflejo(gris)>REFLEJO_MAX){qi.innerHTML='⚠️ <span class="txt-warn">Hay reflejo: inclina un poco la credencial o apaga la linterna</span>';return false;}
+  if(variance<200||nitidez(gris)<NITIDEZ_BORROSA){qi.innerHTML='⚠️ <span class="txt-warn">Imagen borrosa — enfoca el documento</span>';return false;}
   qi.innerHTML='✅ <span class="txt-ok">Calidad de imagen buena</span>';
   return true;
 }
@@ -177,7 +182,22 @@ const OCR_PROXY_URL='https://fc-ocr.therts649.workers.dev';
 const OCR_MODELOS=['qwen/qwen3.6-27b','meta-llama/llama-4-maverick-17b-128e-instruct','qwen/qwen3.8-27b'];
 // Tamaño de la foto que se envía: suficiente para leer el CURP sin gastar
 // datos de más con señal mala.
-const OCR_MAX_LADO=1600,OCR_CALIDAD_JPEG=0.85;
+const OCR_MAX_LADO=1600,OCR_CALIDAD_JPEG=0.9;
+// Los modelos de visión leen mejor la foto a color y sin contraste forzado
+// (el contraste convertía los reflejos en manchas blancas). El modo gris se
+// deja como opción para comparar en campo (botón en la sección de escaneo).
+const OCR_MODO_KEY='fc_ocr_modo';
+function ocrEnGris(){try{return localStorage.getItem(OCR_MODO_KEY)==='gris';}catch(e){return false;}}
+function toggleModoOcr(){
+  const gris=!ocrEnGris();
+  try{localStorage.setItem(OCR_MODO_KEY,gris?'gris':'color');}catch(e){}
+  actualizarModoOcrUI();
+  showToast(gris?'⚫ Se enviará en blanco y negro con contraste':'🎨 Se enviará la foto a color',2600);
+}
+function actualizarModoOcrUI(){
+  const b=document.getElementById('modo-ocr-btn');
+  if(b)b.textContent=ocrEnGris()?'⚫ Lectura: B/N con contraste':'🎨 Lectura: a color';
+}
 const OCR_TOKEN_KEY='fc_ocr_token';
 // La clave de acceso solo se pide si el Worker la exige (responde 401) y se
 // recuerda en el teléfono. Si en Cloudflare no hay ACCESS_TOKEN, nunca se pide.
@@ -201,7 +221,8 @@ function canvasParaOCR(canvas){
     src.width=Math.round(canvas.width*k);src.height=Math.round(canvas.height*k);
     src.getContext('2d').drawImage(canvas,0,0,src.width,src.height);
   }
-  return preprocessCanvas(src).toDataURL('image/jpeg',OCR_CALIDAD_JPEG).split(',')[1];
+  if(ocrEnGris())src=preprocessCanvas(src);
+  return src.toDataURL('image/jpeg',OCR_CALIDAD_JPEG).split(',')[1];
 }
 function esErrorDeRed(e){return /^(Sin conexión|Tiempo agotado)/.test(e&&e.message||'');}
 
@@ -250,7 +271,7 @@ async function procesarOcrPendientes(){
     if(item.tabId&&item.tabId!==activeTabId&&tabs.some(t=>t.id===item.tabId))switchTab(item.tabId);
     status.textContent=`🔍 Leyendo documento pendiente ${ok+1} de ${cola.length}...`;
     try{
-      const obj=await callGroqWithRetry(item.b64);
+      const obj=await leerDocumento(item.b64);
       fillOCRFields(obj,{sinPreguntar:true});
       ok++;
       guardarColaOcr(leerColaOcr().filter(x=>x.ts!==item.ts));
@@ -268,13 +289,39 @@ function descartarOcrPendientes(){
   actualizarAvisoOcr();
 }
 
+// Toma varias fotos seguidas y deja en el canvas la más nítida (la mano se
+// mueve y el enfoque tarda: casi siempre alguna sale mejor que la primera)
+const RAFAGA_FOTOS=5,RAFAGA_PAUSA_MS=90;
+async function mejorCuadro(video,canvas){
+  const region=marcoActivo()?recorteDelMarco(video):null;
+  let mejor=-1;
+  const tmp=document.createElement('canvas');
+  tmp.width=video.videoWidth;tmp.height=video.videoHeight;
+  for(let i=0;i<RAFAGA_FOTOS;i++){
+    if(i)await new Promise(r=>setTimeout(r,RAFAGA_PAUSA_MS));
+    tmp.getContext('2d').drawImage(video,0,0);
+    const n=nitidez(grisReducido(tmp,region));
+    if(n>mejor){
+      mejor=n;
+      canvas.width=tmp.width;canvas.height=tmp.height;
+      canvas.getContext('2d').drawImage(tmp,0,0);
+    }
+  }
+  return mejor;
+}
+
 async function captureOCR(){
+  if(_capturando)return;
+  _capturando=true;
+  try{await capturarYLeer();}finally{_capturando=false;}
+}
+let _capturando=false;
+async function capturarYLeer(){
   const status=document.getElementById('scan-status');
   const video=document.getElementById('ocr-video');
   const canvas=document.getElementById('ocr-canvas');
-  canvas.width=video.videoWidth;
-  canvas.height=video.videoHeight;
-  canvas.getContext('2d').drawImage(video,0,0);
+  status.textContent='📸 Tomando la foto más nítida...';
+  await mejorCuadro(video,canvas);
   // La foto completa se guarda en el teléfono; a la IA va solo el marco
   savePhotoToDevice(canvas);
   if(marcoActivo()){
@@ -298,7 +345,7 @@ async function captureOCR(){
   setProgress(10);
   status.textContent='🔍 Analizando documento con IA...';
   try{
-    const obj=await callGroqWithRetry(base64);
+    const obj=await leerDocumento(base64);
     setProgress(90);
     fillOCRFields(obj);
   }catch(e){
@@ -314,8 +361,34 @@ async function captureOCR(){
 }
 
 // ── REINTENTO AUTOMÁTICO ───────────────────────────────
-async function callGroqWithRetry(base64,maxAttempts){
-  const modelos=OCR_MODELOS;
+// Lee el documento y, si la lectura no cuadra (CURP con dígito verificador
+// incorrecto, CURP que no corresponde al nombre, NIV o código del reverso
+// inválidos), lo vuelve a leer con otro modelo diciéndole qué revisar, y se
+// queda con la lectura que tenga menos errores. Solo gasta una consulta
+// extra cuando hay error.
+async function leerDocumento(base64){
+  const r1=await callGroqWithRetry(base64);
+  const prob=problemasLectura(r1);
+  if(!prob.length)return r1;
+  const status=document.getElementById('scan-status');
+  status.textContent='🔁 La lectura no cuadra: revisándola con otro modelo...';
+  const extra=`\n\nIMPORTANTE: otra lectura de esta misma imagen tuvo errores: ${prob.join('; ')}. Vuelve a leer con mucho cuidado carácter por carácter.`;
+  try{
+    const r2=await callGroqWithRetry(base64,{extra,desde:1});
+    const mejor=mejorLectura(r1,r2);
+    mejor._segundaLectura=true;
+    return mejor;
+  }catch(e){
+    console.warn('Segunda lectura falló:',e.message);
+    return r1;
+  }
+}
+
+async function callGroqWithRetry(base64,opts){
+  opts=opts||{};
+  // Con "desde" se empieza por otro modelo (para la segunda lectura)
+  const d=(opts.desde||0)%OCR_MODELOS.length;
+  const modelos=OCR_MODELOS.slice(d).concat(OCR_MODELOS.slice(0,d));
   let lastErr,clavePedida=false;
   for(let i=0;i<modelos.length;i++){
     const modelo=modelos[i];
@@ -325,7 +398,7 @@ async function callGroqWithRetry(base64,maxAttempts){
         status.textContent=`🔄 Probando modelo alternativo (${i+1}/${modelos.length})...`;
         await new Promise(r=>setTimeout(r,800));
       }
-      return await callGroq(base64,modelo);
+      return await callGroq(base64,modelo,opts.extra);
     }catch(e){
       lastErr=e;
       console.log(`Modelo ${modelo} falló:`,e.message);
@@ -345,7 +418,7 @@ async function callGroqWithRetry(base64,maxAttempts){
       if(e.message.includes('Sin conexión')||e.message.includes('Tiempo agotado')){
         try{
           await new Promise(r=>setTimeout(r,1000));
-          return await callGroq(base64,modelo);
+          return await callGroq(base64,modelo,opts.extra);
         }catch(e2){lastErr=e2;}
       }
     }
@@ -353,20 +426,25 @@ async function callGroqWithRetry(base64,maxAttempts){
   throw lastErr;
 }
 
-async function callGroq(base64,modelName){
+async function callGroq(base64,modelName,extra){
   modelName=modelName||'qwen/qwen3.6-27b';
   const status=document.getElementById('scan-status');
-  const prompt=`Eres un sistema OCR especializado en documentos de identidad mexicanos. Analiza la imagen y extrae los datos visibles.
-Responde SOLO con el siguiente JSON, sin texto adicional, sin markdown, sin comentarios:
-{"tipo":"ine o circulacion","nombre":"","curp":"","fecha_nac":"DD/MM/AAAA","sexo":"","domicilio":"","cod_estado":"","num_estado":"","menor":false,"tipo_vehiculo":"","marca":"","submarca":"","anio":"","placas":"","estado_placas":"","serie":"","motor":""}
-- tipo: "ine" si es INE/credencial/licencia, "circulacion" si es tarjeta de circulación
-- nombre: formato "Apellido1 Apellido2 Nombre" en título
-- curp: los 18 caracteres del CURP tal como aparecen impresos, sin espacios (vacío si no es legible)
-- fecha_nac: formato DD/MM/AAAA
-- sexo: "Masculino" o "Femenino"
+  const prompt=`Eres un sistema OCR especializado en documentos mexicanos. Analiza la imagen y extrae SOLO los datos visibles.
+Responde SOLO con este JSON, sin texto adicional, sin markdown, sin comentarios:
+{"tipo":"","nombre_impreso":"","nombres":"","apellido_paterno":"","apellido_materno":"","curp":"","mrz":"","fecha_nac":"","sexo":"","domicilio":"","cod_estado":"","num_estado":"","menor":false,"licencia_tipo":"","licencia_estado":"","licencia_folio":"","licencia_vigencia":"","tipo_vehiculo":"","marca":"","submarca":"","anio":"","placas":"","estado_placas":"","serie":"","motor":""}
+- tipo: "ine" (frente de la credencial para votar INE/IFE), "ine_reverso" (reverso de la INE), "licencia" (licencia de conducir de cualquier estado), "pasaporte", "otro" (otra identificación con datos de una persona) o "circulacion" (tarjeta de circulación de un vehículo)
+- mrz: si hay renglones de código de lectura mecánica (en el reverso de la INE empiezan con IDMEX; en pasaportes con P<MEX), cópialos EXACTOS, cada renglón separado por \\n, con todos los signos < (cada renglón de la INE tiene 30 caracteres)
+- nombre_impreso: el nombre completo copiado en el MISMO orden en que está impreso, de arriba a abajo y de izquierda a derecha
+- nombres, apellido_paterno, apellido_materno: el nombre separado. OJO con el orden: la INE imprime primero los apellidos y después el nombre; las licencias y pasaportes suelen imprimir primero el nombre y después los apellidos. Guíate por las etiquetas (NOMBRE, APELLIDOS) y por la CURP: su 1.ª letra es la inicial del apellido paterno, la 3.ª la del materno y la 4.ª la del nombre
+- curp: los 18 caracteres tal como aparecen impresos, sin espacios ("" si no es legible)
+- fecha_nac: SOLO la fecha de nacimiento, DD/MM/AAAA. NUNCA la fecha de expedición, emisión, vigencia o vencimiento. Si el documento no muestra la fecha de nacimiento: ""
+- sexo: "Masculino" o "Femenino" (solo si aparece)
+- domicilio: tal como aparece, en una sola línea
 - cod_estado: 2 letras del estado en la CURP (ej: NL, JC, DF)
-- menor: true si tiene menos de 18 años
-- Si un dato no es visible: cadena vacía ""`;
+- menor: true solo si la fecha de nacimiento indica menos de 18 años
+- licencia_tipo: la letra o clase de la licencia (ej: A, B, C, D, E, M). licencia_estado: estado que la expide. licencia_folio: folio o número de la licencia. licencia_vigencia: fecha de vencimiento DD/MM/AAAA ("Permanente" si así dice)
+- Campos del vehículo: solo si es tarjeta de circulación
+- Si un dato no es visible: cadena vacía ""`+(extra||'');
 
   status.textContent='📡 Analizando documento...';
   const controller=new AbortController();
@@ -566,7 +644,7 @@ async function processSingleImage(file){
   }
   let obj;
   try{
-    obj=await callGroqWithRetry(base64);
+    obj=await leerDocumento(base64);
   }catch(e){
     if(esErrorDeRed(e)&&encolarOcr(base64))return'encolado';
     throw e;
@@ -579,24 +657,38 @@ function fillOCRFields(obj,opts){
   if(!obj||obj.error==='imagen_borrosa'){status.textContent='⚠️ Imagen borrosa';return;}
   const filled=[];
 
-    if(obj.tipo==='ine'){
-      if(obj.nombre){fillTitle('nombre',obj.nombre);filled.push('Nombre');}
-      let curpParsed=null;
+    // INE, licencia, pasaporte u otra identificación: datos de la persona
+    if(obj.tipo&&obj.tipo!=='circulacion'){
+      // Código del reverso (MRZ): con sus dígitos de control es la fuente más
+      // confiable para la fecha de nacimiento y el sexo
+      const mrz=obj.mrz?leerMRZ(obj.mrz):null;
+      if(mrz&&mrz.valido){
+        if(mrz.fecha_nac)obj.fecha_nac=mrz.fecha_nac;
+        if(mrz.sexo)obj.sexo=mrz.sexo;
+        if(!obj.nombres&&!obj.nombre_impreso&&mrz.nombres){obj.nombres=mrz.nombres;obj.apellido_paterno=mrz.apellidos;obj.apellido_materno='';}
+        filled.push('Código del reverso ✔');
+      }
+      let curpParsed=null,curpClean='';
       if(obj.curp&&obj.curp.replace(/\s/g,'').length===18){
-        const curpClean=obj.curp.replace(/\s/g,'').toUpperCase();
+        curpClean=obj.curp.replace(/\s/g,'').toUpperCase();
         curpParsed=parseCurp(curpClean);
+        const cst=document.getElementById('curp-status');
+        fill('curp',curpClean);
+        filled.push('CURP');
         if(curpParsed.valid){
-          fill('curp',curpClean);
-          filled.push('CURP');
-          const cst=document.getElementById('curp-status');
           if(cst){
             if(curpParsed.digitoOk){cst.style.color='var(--green)';cst.textContent='✅ CURP leído del documento';}
             else{cst.style.color='#f0a000';cst.textContent='⚠️ CURP leído, pero el dígito verificador no coincide — verifícalo contra el documento';}
           }
         }else{
-          console.warn('CURP leído pero no válido:',curpClean,curpParsed.error);
+          // Se llena igual para que el policía lo corrija viendo el documento
+          if(cst){cst.style.color='#f0a000';cst.textContent='⚠️ CURP leído pero no es válido ('+curpParsed.error+') — compáralo con el documento';}
         }
       }
+      // Nombre en orden "Apellidos Nombre(s)": la licencia lo trae al revés que la INE
+      const nom=ordenarNombre(obj,curpParsed&&curpParsed.valid?curpClean:'');
+      // El reverso no trae acentos: no reemplaza un nombre ya leído del frente
+      if(nom.nombre&&!(obj.tipo==='ine_reverso'&&v('nombre'))){fillTitle('nombre',nom.nombre);filled.push('Nombre');}
       // Datos derivados del CURP (algorítmicos) tienen prioridad por ser más confiables
       if(curpParsed&&curpParsed.valid){
         fill('nacimiento',curpParsed.fecha_nac);calcEdad();filled.push('Fecha de nacimiento (CURP)');
@@ -613,6 +705,7 @@ function fillOCRFields(obj,opts){
       if(edoNombre){fill('estado_origen',edoNombre);filled.push('Estado de origen');}
       // Menor de edad
       if(obj.menor===true){document.getElementById('vulnerable').value='Sí';filled.push('Sector vulnerable (menor)');}
+      if(obj.tipo==='licencia')anotarLicencia(obj)&&filled.push('Datos de la licencia');
     } else if(obj.tipo==='circulacion'){
       if(obj.marca){fill('marca',buscarMarca(obj.marca)||toTitleCase(obj.marca));updateSubmarcaList();filled.push('Marca');}
       if(obj.submarca){
@@ -749,4 +842,71 @@ function preguntarOtraCaptura(){
       startOCR();
     }
   },800);
+}
+
+// Agrega a Datos adicionales qué licencia presentó (se puede borrar o editar)
+function anotarLicencia(obj){
+  const partes=[];
+  if(obj.licencia_tipo)partes.push('tipo '+String(obj.licencia_tipo).trim().toUpperCase());
+  if(obj.licencia_estado)partes.push('del estado de '+toTitleCase(String(obj.licencia_estado).trim()));
+  if(obj.licencia_folio)partes.push('folio '+String(obj.licencia_folio).trim());
+  const vig=String(obj.licencia_vigencia||'').trim();
+  if(/permanente/i.test(vig))partes.push('permanente');
+  else if(vig)partes.push((fechaVencida(vig)?'VENCIDA desde el ':'vigente hasta el ')+vig);
+  if(!partes.length)return false;
+  const frase='Presenta licencia de conducir '+partes.join(', ')+'.';
+  if(obsManualPersona.includes(frase))return false;
+  obsManualPersona=(obsManualPersona.trim()?obsManualPersona.trim()+' ':'')+frase;
+  refreshAdicionales();
+  document.getElementById('adicionales').classList.add('filled');
+  return true;
+}
+
+// ── CAPTURA AUTOMÁTICA ──────────────────────────────────
+// Con la cámara abierta se revisa el marco 3 veces por segundo; cuando la
+// credencial está quieta y enfocada durante ~1 s, la foto se toma sola.
+// Con 🤖 se apaga (se recuerda). Siempre se puede tocar "Capturar".
+const AUTO_KEY='fc_auto_captura',AUTO_INTERVALO_MS=330,AUTO_CUADROS_QUIETO=3;
+let _autoId=null,_autoPrevio=null,_autoQuieto=0,_autoMejor=0,_autoInicio=0;
+function autoActiva(){try{return localStorage.getItem(AUTO_KEY)!=='0';}catch(e){return true;}}
+function toggleAutoCaptura(){
+  const on=!autoActiva();
+  try{localStorage.setItem(AUTO_KEY,on?'1':'0');}catch(e){}
+  document.getElementById('auto-btn').classList.toggle('on',on);
+  if(on)iniciarAutoCaptura();else detenerAutoCaptura();
+  showToast(on?'🤖 Foto automática: se toma sola cuando está quieta y enfocada':'Foto automática apagada',2800);
+}
+function iniciarAutoCaptura(){
+  detenerAutoCaptura();
+  const b=document.getElementById('auto-btn');
+  if(b)b.classList.toggle('on',autoActiva());
+  if(!autoActiva())return;
+  _autoPrevio=null;_autoQuieto=0;_autoMejor=0;_autoInicio=Date.now();
+  _autoId=setInterval(revisarAutoCaptura,AUTO_INTERVALO_MS);
+}
+function detenerAutoCaptura(){
+  clearInterval(_autoId);_autoId=null;
+  const m=document.getElementById('ocr-marco');if(m)m.classList.remove('listo');
+}
+function revisarAutoCaptura(){
+  const video=document.getElementById('ocr-video');
+  if(!ocrStream||!video.videoWidth||_capturando||document.hidden)return;
+  const region=marcoActivo()?recorteDelMarco(video):null;
+  // Misma escala (320 px) con la que se calibraron los umbrales: más chica,
+  // una foto borrosa parece nítida
+  const cuadro=grisReducido(video,region,320);
+  const mov=diferenciaCuadros(cuadro,_autoPrevio);
+  _autoPrevio=cuadro;
+  const n=nitidez(cuadro);
+  _autoMejor=Math.max(_autoMejor,n);
+  const quieto=mov<MOVIMIENTO_QUIETO;
+  _autoQuieto=quieto?_autoQuieto+1:0;
+  const enfocado=n>=NITIDEZ_MIN_AUTO&&n>=_autoMejor*0.8;
+  document.getElementById('ocr-marco').classList.toggle('listo',quieto&&enfocado);
+  // Esperar al menos 1.2 s desde que se abrió la cámara (que el enfoque se acomode)
+  if(_autoQuieto>=AUTO_CUADROS_QUIETO&&enfocado&&Date.now()-_autoInicio>1200){
+    detenerAutoCaptura();
+    vibrate(60);
+    captureOCR();
+  }
 }
