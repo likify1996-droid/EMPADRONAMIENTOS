@@ -300,13 +300,15 @@ function eliminarDelLote(id){
   showToast('🗑 Eliminado del lote');
 }
 
+function textoLote(){
+  return loteEmpadronamientos.map(i=>i.texto).join('\n\n━━━━━━━━━━━━━━━━━━━━\n\n');
+}
 function copiarTodoLote(){
   if(loteEmpadronamientos.length===0){
     showToast('⚠️ El lote está vacío');
     return;
   }
-  const separador='\n\n━━━━━━━━━━━━━━━━━━━━\n\n';
-  const textoCompleto=loteEmpadronamientos.map(i=>i.texto).join(separador);
+  const textoCompleto=textoLote();
   navigator.clipboard.writeText(textoCompleto).then(()=>{
     showToast(`✅ ${loteEmpadronamientos.length} reportes copiados — pégalos en WhatsApp`);
     vibrate(80);
@@ -361,3 +363,49 @@ function cerrarPreview(){
   document.getElementById('preview-modal').style.display='none';
   document.body.style.overflow='';
 }
+
+// ── ENVIAR POR WHATSAPP ─────────────────────────────────
+// En el teléfono abre el menú de compartir (WhatsApp, grupo, Telegram…);
+// si el navegador no lo tiene, abre WhatsApp con el texto ya escrito.
+async function compartirTexto(texto){
+  if(!texto){showToast('⚠️ No hay reporte para enviar');return;}
+  if(navigator.share){
+    try{await navigator.share({text:texto});return;}
+    catch(e){if(e.name==='AbortError')return;}
+  }
+  window.open('https://wa.me/?text='+encodeURIComponent(texto),'_blank');
+}
+function enviarReporte(){compartirTexto(document.getElementById('output-text').value);}
+function enviarLote(){
+  if(!loteEmpadronamientos.length){showToast('⚠️ El lote está vacío');return;}
+  compartirTexto(textoLote());
+}
+
+// ── LOTE EN PDF ─────────────────────────────────────────
+// Arma una hoja con todos los reportes y abre "Imprimir"; en el teléfono se
+// elige "Guardar como PDF". La hoja se borra al terminar.
+function imprimirLote(){
+  if(!loteEmpadronamientos.length){showToast('⚠️ El lote está vacío');return;}
+  const hoja=document.getElementById('impresion');
+  hoja.innerHTML='';
+  const h=document.createElement('h1');
+  h.textContent='Fuerza Civil — Lote de empadronamientos';
+  const sub=document.createElement('p');
+  sub.className='imp-sub';
+  const ahora=new Date();
+  sub.textContent=`${v('nombre_pol')||''}${v('ne')?' · N.E. '+v('ne'):''} · ${ahora.toLocaleDateString('es-MX')} ${ahora.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})} · ${loteEmpadronamientos.length} empadronamiento(s)`;
+  hoja.append(h,sub);
+  loteEmpadronamientos.forEach(item=>{
+    const div=document.createElement('div');
+    div.className='imp-item';
+    // *negritas* de WhatsApp → negritas en papel
+    item.texto.split(/(\*[^*\n]+\*)/).forEach(parte=>{
+      if(/^\*[^*\n]+\*$/.test(parte)){const b=document.createElement('b');b.textContent=parte.slice(1,-1);div.appendChild(b);}
+      else div.appendChild(document.createTextNode(parte));
+    });
+    hoja.appendChild(div);
+  });
+  cerrarPanelLote();
+  setTimeout(()=>window.print(),100);
+}
+window.addEventListener('afterprint',()=>{document.getElementById('impresion').innerHTML='';});

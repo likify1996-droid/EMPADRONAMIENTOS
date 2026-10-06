@@ -683,3 +683,26 @@ body.compact label{font-size:.62rem;}
 /* ── DATOS POR REVISAR ── */
 input.campo-revisar,textarea.campo-revisar{border-color:#f0a000!important;background:rgba(240,160,0,.07)!important;}
 .aviso-revisar{font-size:.68rem;color:#f0a000;margin-top:3px;}
+
+/* ── WHATSAPP Y PDF ── */
+.output-header{flex-wrap:wrap;gap:8px;}
+.btn-copy--wa{background:linear-gradient(135deg,#00a884,#25d366);box-shadow:0 2px 10px rgba(37,211,102,.3);}
+.lote-copy--wa{background:linear-gradient(135deg,#00a884,#25d366);}
+.lote-sec{padding:12px 16px;background:transparent;border:1px solid var(--accent2);border-radius:8px;color:var(--accent);font-weight:600;font-size:.85rem;cursor:pointer;}
+#impresion{display:none;}
+@media print{
+  body{background:#fff!important;color:#000!important;padding:0!important;font-family:'Exo 2',sans-serif;}
+  body>*:not(#impresion){display:none!important;}
+  #impresion{display:block!important;}
+  #impresion h1{font-family:'Rajdhani',sans-serif;font-size:18pt;margin-bottom:2pt;}
+  .imp-sub{font-size:9pt;color:#444;margin-bottom:12pt;}
+  .imp-item{white-space:pre-wrap;font-size:9.5pt;line-height:1.35;border-top:1px solid #999;padding:10pt 0;break-inside:avoid;}
+}
+
+/* ── DICTADO POR VOZ ── */
+.con-dictado{position:relative;}
+.con-dictado textarea{padding-right:46px;}
+.btn-dictado{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;border:1px solid var(--accent2);background:var(--surface);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.btn-dictado.grabando{background:var(--danger);border-color:var(--danger);animation:dotPulse 1.2s ease-in-out infinite;}
+.output-header .row{flex:1;justify-content:flex-end;}
+.output-header .btn-copy{padding:8px 11px;white-space:nowrap;}

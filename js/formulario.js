@@ -681,3 +681,55 @@ document.addEventListener('input',e=>{
   const el=e.target;
   if(el&&CAMPOS_REVISION[el.id]&&el.classList.contains('campo-revisar'))revisarCampo(el.id);
 });
+
+// ── DICTADO POR VOZ ─────────────────────────────────────
+// Botón 🎤 en los cuadros con data-dictado. Usa el reconocimiento de voz
+// del navegador (Chrome en Android; necesita internet). Lo dictado se
+// agrega al final, sin borrar lo que ya estaba escrito.
+const Reconocimiento=window.SpeechRecognition||window.webkitSpeechRecognition;
+let _dictado=null;
+function prepararDictado(){
+  document.querySelectorAll('textarea[data-dictado]').forEach(ta=>{
+    const b=document.createElement('button');
+    b.type='button';b.className='btn-dictado';b.textContent='🎤';b.title='Dictar por voz';
+    b.id='dictar-'+ta.id;
+    b.dataset.action='dictar';b.dataset.args=JSON.stringify([ta.id]);
+    if(!Reconocimiento)b.hidden=true;
+    const caja=document.createElement('div');
+    caja.className='con-dictado';
+    ta.replaceWith(caja);
+    caja.append(ta,b);
+  });
+}
+function agregarDictado(id,texto){
+  texto=texto.charAt(0).toUpperCase()+texto.slice(1);
+  if(!/[.!?]$/.test(texto))texto+='.';
+  const juntar=(a,b)=>(a.trim()?a.trim()+' ':'')+b;
+  // En estos dos cuadros lo escrito a mano se guarda aparte de las frases de los botones
+  if(id==='adicionales'){obsManualPersona=juntar(obsManualPersona,texto);refreshAdicionales();}
+  else if(id==='observaciones'){obsManualVeh=juntar(obsManualVeh,texto);refreshObservaciones();}
+  else{const ta=document.getElementById(id);ta.value=juntar(ta.value,texto);}
+  document.getElementById(id).dispatchEvent(new Event('input',{bubbles:true}));
+}
+function dictar(id){
+  if(_dictado){_dictado.stop();return;}
+  if(!Reconocimiento){showToast('⚠️ Este navegador no permite dictado');return;}
+  if(!navigator.onLine){showToast('⚠️ El dictado necesita conexión a internet');return;}
+  const btn=document.getElementById('dictar-'+id);
+  const r=new Reconocimiento();
+  r.lang='es-MX';r.interimResults=false;r.continuous=false;r.maxAlternatives=1;
+  r.onresult=e=>{
+    const t=Array.from(e.results).map(x=>x[0].transcript).join(' ').trim();
+    if(t)agregarDictado(id,t);
+  };
+  r.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed')showToast('⚠️ Permite el micrófono para dictar',3500);
+    else if(e.error!=='no-speech'&&e.error!=='aborted')showToast('⚠️ No se pudo dictar ('+e.error+')');
+  };
+  r.onend=()=>{_dictado=null;btn.classList.remove('grabando');};
+  _dictado=r;
+  btn.classList.add('grabando');
+  showToast('🎤 Habla ahora… (toca 🎤 otra vez para terminar)',3000);
+  vibrate(30);
+  r.start();
+}

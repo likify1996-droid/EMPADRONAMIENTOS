@@ -14,6 +14,11 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 - **Ubicación:** GPS, mapa con pin y búsqueda de direcciones. Usa OpenStreetMap (Nominatim) o, opcionalmente, Google Places con una llave propia.
 - **Catálogo de vehículos:** al elegir o escanear la submarca se llena solo el tipo de vehículo, y también la marca si falta.
 - **🔒 Terminar turno:** borra del teléfono todo lo capturado y conserva solo los datos del policía.
+- **Marco guía en la cámara:** a la IA se envía solo lo que está dentro del marco de la credencial. Con 🔲 se apaga para documentos grandes.
+- **Revisión de datos:** NIV/serie (17 caracteres y dígito verificador), placas, teléfono de 10 dígitos y que la edad cuadre con la fecha de nacimiento. Lo dudoso se marca en naranja; avisa pero no impide generar.
+- **📤 WhatsApp:** envía el reporte o el lote completo sin copiar y pegar.
+- **🎤 Dictado por voz** en Datos adicionales, Tatuajes y Observaciones (necesita internet).
+- **🖨 PDF del lote:** abre "Imprimir"; en el teléfono se elige "Guardar como PDF".
 
 ## Archivos
 
@@ -23,15 +28,18 @@ App web (PWA) para capturar empadronamientos en campo y generar el reporte listo
 | `css/styles.css` | Todos los estilos y los temas claro y oscuro. |
 | `js/catalogos.js` | Datos: categorías, estados, motivos, tipos y catálogo de vehículos. |
 | `js/nucleo.js` | Base de la interfaz: eventos, avisos, tema y utilidades. Aquí va `APP_VERSION`. |
-| `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía. |
+| `js/revisiones.js` | Reglas para revisar NIV, placas, teléfono y edad. |
+| `js/formulario.js` | Validación, campos calculados, limpiar y datos del policía, avisos de revisión y dictado. |
 | `js/vehiculo.js` | Autocompletado de marca y submarca, y tipo automático. |
 | `js/ubicacion.js` | GPS, mapa y búsqueda de direcciones. |
 | `js/ocr.js` | Cámara, galería, CURP, envío al Worker y fotos pendientes. |
-| `js/reporte.js` | Texto del reporte, lote, copiar y vista previa. |
+| `js/reporte.js` | Texto del reporte, lote, copiar, WhatsApp, PDF y vista previa. |
 | `js/pestanas.js` | Pestañas y autoguardado. |
 | `js/app.js` | Arranque de la app, service worker e instalación. |
 | `sw.js` | Service worker: hace que la app funcione sin conexión. |
 | `manifest.json`, `icon-*.png` | Datos e íconos para instalar la app. |
+| `fonts/` | Tipografías Rajdhani y Exo 2 (licencia OFL), para que se vean igual sin conexión. |
+| `tests/` | Pruebas automáticas (ver abajo). |
 | `worker/fc-ocr.js` | Copia del Worker de Cloudflare que guarda la API key de Groq. |
 
 ### Cómo se conectan los botones

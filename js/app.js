@@ -4,6 +4,7 @@
 // ── ARRANQUE DE LA APP ──────────────────────────────────
 window.onload=()=>{
   renderMotivos();
+  prepararDictado();
   document.getElementById('app-version').textContent='Versión '+APP_VERSION;
   renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();

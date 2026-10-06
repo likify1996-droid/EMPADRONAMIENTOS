@@ -31,9 +31,10 @@ export const WORKER = 'https://fc-ocr.therts649.workers.dev';
 
 // Página nueva con todo internet bloqueado salvo lo que se simule.
 // ocr: función (petición) → {status, body} para el Worker.
-export async function nuevaPagina(browser, url, { ocr, nominatim, sw = false, colorScheme, dialogos } = {}) {
+export async function nuevaPagina(browser, url, { ocr, nominatim, sw = false, colorScheme, dialogos, antes } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 900 }, serviceWorkers: sw ? 'allow' : 'block', colorScheme, permissions: ['camera'] });
   const page = await ctx.newPage();
+  if (antes) await page.addInitScript(antes); // código que corre antes que la app
   const errores = [];
   page.on('pageerror', e => errores.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/net::|ERR_|Failed to load resource/.test(m.text())) errores.push(m.text()); });
