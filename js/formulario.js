@@ -458,7 +458,12 @@ function updateClock(){
   const cl=document.getElementById('header-clock');
   if(cl)cl.textContent=t+' | '+d;
 }
-setInterval(updateClock,1000);
+// El reloj solo corre con la app en pantalla: en segundo plano no gasta batería
+let _relojId=null;
+function iniciarReloj(){if(_relojId===null){updateClock();_relojId=setInterval(updateClock,1000);}}
+function detenerReloj(){clearInterval(_relojId);_relojId=null;}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)detenerReloj();else iniciarReloj();});
+iniciarReloj();
 
 // ── INDICADORES DEL FORMULARIO (listo, progreso, botón flotante) ──
 function validateField(id){
@@ -506,7 +511,15 @@ function updateProgress(){
   if(fill)fill.style.width=pct+'%';
   if(pctEl)pctEl.textContent=pct+'%';
 }
-setInterval(()=>{checkGenerateReady();updateProgress();},1500);
+// Los indicadores (botón listo, progreso, botón flotante) se recalculan al
+// escribir o cuando la app llena campos sola, no cada segundo.
+let _refrescoT=null;
+function programarRefresco(){
+  clearTimeout(_refrescoT);
+  _refrescoT=setTimeout(()=>{checkGenerateReady();updateProgress();handleFAB();},150);
+}
+document.addEventListener('input',programarRefresco);
+document.addEventListener('change',programarRefresco);
 
 // FAB: mostrar al hacer scroll, ocultar cuando el botón principal es visible
 function handleFAB(){
@@ -527,7 +540,6 @@ function handleFAB(){
 }
 window.addEventListener('scroll',handleFAB,{passive:true});
 window.addEventListener('touchmove',handleFAB,{passive:true});
-setInterval(handleFAB,1000);
 
 // ── DESHACER LIMPIAR ────────────────────────────────────
 let undoBackup=null;
@@ -565,6 +577,7 @@ function restoreForm(data){
   }
   syncMotivoUI();
   buildAddr();
+  programarRefresco();
 }
 function ofrecerDeshacer(){
   const t=document.getElementById('toast');

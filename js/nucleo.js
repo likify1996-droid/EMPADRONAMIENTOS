@@ -133,6 +133,7 @@ function fill(id,val){
   if(!val)return;
   const el=document.getElementById(id);
   if(el){el.value=val;el.classList.add('filled');el.classList.remove('just-filled');void el.offsetWidth;el.classList.add('just-filled');}
+  programarRefresco();
 }
 function fillTitle(id,val){
   if(!val)return;
@@ -193,6 +194,7 @@ function pickSelect(hiddenId, searchId, value){
     const h=document.getElementById('tipo-detectado');if(h)h.style.display='none';
   }
   document.getElementById(hiddenId).value = value;
+  programarRefresco();
   document.getElementById(searchId).value = value;
   document.getElementById(hiddenId + '_dropdown').style.display = 'none';
 }

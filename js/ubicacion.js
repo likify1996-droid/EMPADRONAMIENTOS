@@ -12,6 +12,7 @@ function buildAddr(){
   else if(mun)p.push(mun);
   p.push('N.L.');
   document.getElementById('addr-preview').textContent=p.length>1?p.join(', '):'La dirección aparecerá aquí...';
+  programarRefresco();
 }
 function onAddrTexto(){
   const val=document.getElementById('addr_texto').value.trim();

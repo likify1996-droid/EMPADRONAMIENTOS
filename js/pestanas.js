@@ -375,11 +375,13 @@ document.addEventListener('input',e=>{
   scheduleDraftSave();renderTabsSoon();
 });
 document.addEventListener('change',()=>{if(tabsReady){scheduleDraftSave();renderTabsSoon();}});
+// Red de seguridad para cambios que no disparan eventos (GPS, OCR, mapa):
+// cada 4 s, y solo con la app en pantalla, compara el formulario completo.
 setInterval(()=>{
-  if(!tabsReady)return;
+  if(!tabsReady||document.hidden)return;
   const sig=JSON.stringify(backupForm())+'|'+activeTabId+'|'+tabs.length;
-  if(sig!==_lastSig){_lastSig=sig;scheduleDraftSave();}
-},2000);
+  if(sig!==_lastSig){_lastSig=sig;scheduleDraftSave();programarRefresco();}
+},4000);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden&&tabsReady){clearTimeout(draftSaveTimer);saveTabs();}
 });
