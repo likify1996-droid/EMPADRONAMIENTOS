@@ -5,6 +5,7 @@
 window.onload=()=>{
   renderMotivos();
   prepararDictado();
+  actualizarModoOcrUI();
   document.getElementById('app-version').textContent='Versión '+APP_VERSION;
   renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();
