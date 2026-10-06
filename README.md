@@ -55,6 +55,19 @@ Los elementos del HTML declaran la función que usan con atributos `data-*`, y u
 3. Une el cambio a `main`. GitHub Pages lo publica en 1–2 minutos.
 4. Los teléfonos con la app abierta ven el aviso **"Hay una versión nueva"**. La versión que tiene cada teléfono aparece al pie de la página.
 
+## Pruebas automáticas
+
+La carpeta `tests/` tiene pruebas que abren la app en Chromium y la usan como un policía: llenan el formulario, generan el reporte, escanean con el OCR simulado, prueban el modo sin señal, el catálogo y el Worker. Todo lo de internet se simula, así que no gastan Groq.
+
+- **En GitHub** corren solas en cada PR (pestaña *Checks*). Si algo se rompió, aparece una ❌ antes de unir el cambio.
+- **En una computadora:**
+  ```
+  npm install
+  npx playwright install chromium
+  npm test              # todas
+  npm test -- vehiculo  # solo las de un archivo
+  ```
+
 ## Catálogo de vehículos
 
 En `js/catalogos.js`, `VEHICULOS` está organizado por **marca → tipo → modelos**:

@@ -1,0 +1,12 @@
+{
+  "name": "fc-empadronamiento",
+  "private": true,
+  "description": "Pruebas automáticas de la app FC Empadronamiento",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
