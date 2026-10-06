@@ -8,6 +8,42 @@ window.addEventListener('unhandledrejection',function(ev){
 });
 
 
+// ── EVENTOS DE LA INTERFAZ ─────────────────────────────
+// El HTML no lleva onclick/oninput: cada elemento declara la función que usa
+// con data-action (clic), data-input, data-change, data-focus o data-blur, y
+// sus argumentos en data-args (JSON). En los argumentos, "$el" es el propio
+// elemento y "$value" su valor. data-self-only hace que el clic solo cuente
+// sobre el elemento mismo (para cerrar ventanas al tocar el fondo).
+function runUiHandler(el,attr){
+  const name=el.dataset[attr];
+  const fn=window[name];
+  if(typeof fn!=='function'){console.error('Función de interfaz no encontrada:',name);return;}
+  let args=[];
+  if(el.dataset.args){
+    try{args=JSON.parse(el.dataset.args);}catch(e){console.error('data-args inválido en',el);}
+  }
+  args=args.map(a=>a==='$el'?el:a==='$value'?el.value:a);
+  return fn.apply(el,args);
+}
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-action]');
+  if(!el||el.disabled)return;
+  if('selfOnly' in el.dataset&&e.target!==el)return;
+  runUiHandler(el,'action');
+});
+[['input','input'],['change','change'],['focusin','focus'],['focusout','blur']].forEach(([evento,attr])=>{
+  document.addEventListener(evento,e=>{
+    const el=e.target;
+    if(el&&el.dataset&&el.dataset[attr])runUiHandler(el,attr);
+  });
+});
+
+// Pequeñas acciones que antes iban escritas dentro del HTML
+function abrirGaleria(){document.getElementById('gallery-input').click();}
+function abrirImportPolicia(){document.getElementById('import-policia-input').click();}
+function aMayusculas(el){el.value=el.value.toUpperCase();}
+function copiarYCerrarPreview(){copiar();cerrarPreview();}
+
 // ── SUBCATEGORÍAS ──────────────────────────────────────
 function updateSubcat(){
   const cat=document.getElementById('categoria').value;
@@ -17,14 +53,25 @@ function updateSubcat(){
 }
 
 // ── AUTOCOMPLETE GENÉRICO ──────────────────────────────
-function acFilter(inId,listId,data){
-  const val=document.getElementById(inId).value.toLowerCase();
+const AC_LISTAS={ESTADOS};
+function pintarAutocomplete(inId,listId,hits){
   const list=document.getElementById(listId);
-  if(!val){list.classList.remove('show');return;}
-  const hits=data.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
+  list.innerHTML='';
   if(!hits.length){list.classList.remove('show');return;}
-  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('${inId}','${listId}',this)">${m}</div>`).join('');
+  hits.forEach(m=>{
+    const d=document.createElement('div');
+    d.className='ac-item';
+    d.textContent=m;
+    d.addEventListener('mousedown',()=>acPick(inId,listId,d));
+    list.appendChild(d);
+  });
   list.classList.add('show');
+}
+function acFilter(inId,listId,data){
+  if(typeof data==='string')data=AC_LISTAS[data]||[];
+  const val=document.getElementById(inId).value.toLowerCase();
+  if(!val){document.getElementById(listId).classList.remove('show');return;}
+  pintarAutocomplete(inId,listId,data.filter(d=>d.toLowerCase().includes(val)).slice(0,8));
 }
 function acPick(inId,listId,el){
   document.getElementById(inId).value=el.textContent;
@@ -56,10 +103,8 @@ function acSubmarca(){
   const base=SUBMARCAS[marca]||[];
   // Si hay lista de la marca, filtrar de ella; si no, buscar en todos
   const pool=base.length?base:Object.values(SUBMARCAS).flat();
-  const hits=pool.filter(d=>d.toLowerCase().includes(val)).slice(0,8);
-  if(!hits.length||!val){list.classList.remove('show');return;}
-  list.innerHTML=hits.map(m=>`<div class="ac-item" onmousedown="acPick('submarca','ac_submarca',this)">${m}</div>`).join('');
-  list.classList.add('show');
+  if(!val){list.classList.remove('show');return;}
+  pintarAutocomplete('submarca','ac_submarca',pool.filter(d=>d.toLowerCase().includes(val)).slice(0,8));
 }
 
 // ── DIRECCIÓN ──────────────────────────────────────────
@@ -112,11 +157,11 @@ function geoLocate(){
   let readings=[], bestReading=null, watchId=null, timer=null, gotAny=false;
 
   function signalBars(acc){
-    if(acc<=10)return'<span style="color:var(--green)">▂▄▆█ Excelente</span>';
-    if(acc<=20)return'<span style="color:var(--green)">▂▄▆░ Buena</span>';
-    if(acc<=50)return'<span style="color:#f0a000">▂▄░░ Regular</span>';
-    if(acc<=100)return'<span style="color:#f0a000">▂▄░░ Aceptable</span>';
-    return'<span style="color:var(--danger)">▂░░░ Aproximada</span>';
+    if(acc<=10)return'<span class="txt-ok">▂▄▆█ Excelente</span>';
+    if(acc<=20)return'<span class="txt-ok">▂▄▆░ Buena</span>';
+    if(acc<=50)return'<span class="txt-warn">▂▄░░ Regular</span>';
+    if(acc<=100)return'<span class="txt-warn">▂▄░░ Aceptable</span>';
+    return'<span class="txt-danger">▂░░░ Aproximada</span>';
   }
 
   function updateStatus(acc, count){
@@ -144,10 +189,10 @@ function geoLocate(){
     // Si ya tenemos alguna lectura, usar la mejor
     if(bestReading){finish(bestReading.lat,bestReading.lon,bestReading.acc);return;}
     // Errores específicos
-    if(err.code===1){st.innerHTML='<span style="color:var(--danger)">❌ Permiso de ubicación denegado. Actívalo en ajustes del navegador.</span>';}
-    else if(err.code===2){st.innerHTML='<span style="color:var(--danger)">❌ Posición no disponible. Sal a cielo abierto e intenta de nuevo.</span>';}
-    else if(err.code===3){st.innerHTML='<span style="color:#f0a000">⏱ GPS lento. Intentando con menor precisión...</span>';fallbackLowAccuracy();}
-    else st.innerHTML='<span style="color:var(--danger)">❌ Error de GPS. Intenta de nuevo.</span>';
+    if(err.code===1){st.innerHTML='<span class="txt-danger">❌ Permiso de ubicación denegado. Actívalo en ajustes del navegador.</span>';}
+    else if(err.code===2){st.innerHTML='<span class="txt-danger">❌ Posición no disponible. Sal a cielo abierto e intenta de nuevo.</span>';}
+    else if(err.code===3){st.innerHTML='<span class="txt-warn">⏱ GPS lento. Intentando con menor precisión...</span>';fallbackLowAccuracy();}
+    else st.innerHTML='<span class="txt-danger">❌ Error de GPS. Intenta de nuevo.</span>';
   }
 
   // Intento principal: alta precisión
@@ -165,7 +210,7 @@ function geoLocate(){
       finish(lat,lon,acc);
     },err=>{
       if(bestReading)finish(bestReading.lat,bestReading.lon,bestReading.acc);
-      else st.innerHTML='<span style="color:var(--danger)">❌ No se pudo obtener ubicación. Verifica que el GPS esté activado.</span>';
+      else st.innerHTML='<span class="txt-danger">❌ No se pudo obtener ubicación. Verifica que el GPS esté activado.</span>';
     },{enableHighAccuracy:false,timeout:15000,maximumAge:30000});
   }
 
@@ -221,7 +266,7 @@ async function detectarCruceEn(lat,lon,calle,statusElId){
       cruceEl.placeholder='⚠️ No detectado — escribe manualmente';
       setTimeout(()=>cruceEl.focus(),800);
       const geoSt=document.getElementById(statusElId);
-      if(geoSt)geoSt.innerHTML+='<br><span style="color:var(--danger);font-size:.72rem;">⚠️ Cruce no detectado — escríbelo manualmente</span>';
+      if(geoSt)geoSt.innerHTML+='<br><span class="txt-danger txt-sm">⚠️ Cruce no detectado — escríbelo manualmente</span>';
     }
   }catch(e){}
   return found;
@@ -246,7 +291,7 @@ async function fetchAddress(lat, lon, acc, statusElId){
     if(cp)document.getElementById('addr_cp').value=cp;
     if(mun)document.getElementById('addr_municipio').value=mun;
     if(!calle&&!cp&&!mun){
-      st.innerHTML='<span style="color:#f0a000">⚠️ No se encontraron datos de dirección para este punto exacto. Ajusta el pin o escribe manualmente.</span>';
+      st.innerHTML='<span class="txt-warn">⚠️ No se encontraron datos de dirección para este punto exacto. Ajusta el pin o escribe manualmente.</span>';
     }
 
     // Cruce — calle perpendicular a la actual
@@ -557,10 +602,10 @@ function checkImageQuality(canvas){
   variance=vals.reduce((s,v)=>s+Math.pow(v-brightness,2),0)/vals.length;
   const qi=document.getElementById('img-quality');
   qi.style.display='block';
-  if(brightness<50){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen muy oscura — mejora la iluminación</span>';return false;}
-  if(brightness>220){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen sobreexpuesta — reduce la luz</span>';return false;}
-  if(variance<200){qi.innerHTML='⚠️ <span style="color:#f0a000">Imagen borrosa — enfoca el documento</span>';return false;}
-  qi.innerHTML='✅ <span style="color:var(--green)">Calidad de imagen buena</span>';
+  if(brightness<50){qi.innerHTML='⚠️ <span class="txt-warn">Imagen muy oscura — mejora la iluminación</span>';return false;}
+  if(brightness>220){qi.innerHTML='⚠️ <span class="txt-warn">Imagen sobreexpuesta — reduce la luz</span>';return false;}
+  if(variance<200){qi.innerHTML='⚠️ <span class="txt-warn">Imagen borrosa — enfoca el documento</span>';return false;}
+  qi.innerHTML='✅ <span class="txt-ok">Calidad de imagen buena</span>';
   return true;
 }
 
@@ -1056,13 +1101,13 @@ function limpiarSeccion(sec){
     servicio:['zona','ne','nombre_pol','addr_calle','addr_cruce','addr_colonia','addr_cp','addr_municipio','addr_texto','folio','crp','bodycam','motivo'],
     persona:['nombre','nacimiento','edad','estatura','telefono','alias','redes','domicilio','estado_origen','oficio','padre','madre','antecedentes','grupo','rol','adicionales','escolaridad_detalle'],
     tatuajes:['tatuajes_cant','tatuajes_area','tatuajes_desc','tatuajes_bloque'],
-    vehiculo:['marca','submarca','modelo','anio','color','placas','estado_placas','serie','motor','niv','observaciones']
+    vehiculo:['tipo_vehiculo','tipo_vehiculo_search','marca','submarca','modelo','anio','color','placas','estado_placas','serie','motor','niv','observaciones']
   };
   const selects={
     servicio:['categoria','subcategoria'],
     persona:['vulnerable','sexo','estado_civil','escolaridad'],
     tatuajes:[],
-    vehiculo:['tipo_vehiculo','documentacion']
+    vehiculo:['documentacion']
   };
   (maps[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el){el.value=id==='tatuajes_cant'?'0':'';el.classList.remove('filled');}});
   (selects[sec]||[]).forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
@@ -1311,20 +1356,19 @@ function pintarSugerencias(sugg,items,onPick,errorMsg){
   sugg.innerHTML='';
   if(errorMsg){
     const e=document.createElement('div');
-    e.style.cssText='font-size:.7rem;padding:7px 12px;color:#f0a000;border-bottom:1px solid var(--border);';
+    e.className='sug-error';
     e.textContent='⚠️ '+errorMsg+' — mostrando resultados básicos';
     sugg.appendChild(e);
   }
   items.forEach(it=>{
     const d=document.createElement('div');
-    d.className='sv-item';
-    d.style.cssText='font-size:.82rem;padding:9px 12px;display:block;';
+    d.className='sv-item sug-item';
     const m=document.createElement('div');
-    m.style.fontWeight='600';m.textContent='📍 '+it.main;
+    m.className='sug-main';m.textContent='📍 '+it.main;
     d.appendChild(m);
     if(it.secondary){
       const s=document.createElement('div');
-      s.style.cssText='font-size:.7rem;color:var(--muted);margin-top:2px;';
+      s.className='sug-sec';
       s.textContent=it.secondary;
       d.appendChild(s);
     }
@@ -1465,12 +1509,32 @@ function loadTheme(){
 }
 
 // ── SEARCHABLE SELECT ──────────────────────────────────
+function renderTiposVehiculo(){
+  const dd=document.getElementById('tipo_vehiculo_dropdown');
+  if(!dd)return;
+  dd.innerHTML='';
+  TIPOS_VEHICULO.forEach(t=>{
+    const item=document.createElement('div');
+    item.className='sv-item sv-vehicle';
+    item.dataset.action='pickSelect';
+    item.dataset.args=JSON.stringify(['tipo_vehiculo','tipo_vehiculo_search',t.nombre]);
+    const ico=document.createElement('span');
+    ico.className='sv-ico';
+    ico.innerHTML=t.svg; // SVG fijo del catálogo, no viene del usuario
+    const lbl=document.createElement('span');
+    lbl.className='sv-label';
+    lbl.textContent=t.nombre;
+    item.append(ico,lbl);
+    dd.appendChild(item);
+  });
+}
+function mostrarTiposVehiculo(){document.getElementById('tipo_vehiculo_dropdown').style.display='block';}
 function filterSelect(hiddenId, searchId){
   const val = document.getElementById(searchId).value.toLowerCase();
   const dropdown = document.getElementById(hiddenId + '_dropdown');
   dropdown.style.display = 'block';
   dropdown.querySelectorAll('.sv-item').forEach(item => {
-    item.style.display = item.textContent.toLowerCase().includes(val) ? 'block' : 'none';
+    item.style.display = item.textContent.toLowerCase().includes(val) ? '' : 'none';
   });
 }
 function pickSelect(hiddenId, searchId, value){
@@ -1600,12 +1664,20 @@ function toggleSection(id){
   const body=document.getElementById(id);
   if(!body)return;
   const arrow=document.getElementById(id.replace('-body','-arrow'));
-  const isCollapsed=body.style.maxHeight==='0px'||body.style.maxHeight==='';
+  const isCollapsed=body.style.maxHeight==='0px';
+  // La altura se fija solo durante la animación; al terminar queda libre
+  // para que los campos que aparecen después (p. ej. carrera) no se corten.
+  body.style.maxHeight=body.scrollHeight+'px';
   if(isCollapsed){
-    body.style.maxHeight=body.scrollHeight+'px';
     body.style.opacity='1';
     if(arrow)arrow.style.transform='rotate(0deg)';
+    body.addEventListener('transitionend',function fin(e){
+      if(e.propertyName!=='max-height')return;
+      body.removeEventListener('transitionend',fin);
+      if(body.style.maxHeight!=='0px')body.style.maxHeight='none';
+    });
   } else {
+    void body.offsetHeight;
     body.style.maxHeight='0px';
     body.style.opacity='0';
     if(arrow)arrow.style.transform='rotate(-90deg)';
@@ -1824,23 +1896,44 @@ function actualizarBarraLote(){
 
 function abrirPanelLote(){
   const lista=document.getElementById('lote-lista');
+  lista.innerHTML='';
   if(loteEmpadronamientos.length===0){
-    lista.innerHTML='<p style="text-align:center;color:var(--muted);padding:20px;">No hay empadronamientos en el lote todavía.</p>';
-  } else {
-    lista.innerHTML=loteEmpadronamientos.map((item,idx)=>`
-      <div style="background:var(--surface2);border:1px solid ${item.id===editingLoteId?'#9b59b6':'var(--border2)'};${item.id===editingLoteId?'box-shadow:0 0 0 1px #9b59b6;':''}border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
-        <div>
-          <div style="font-weight:600;color:var(--text);font-size:.88rem;">#${escHtml(item.numEmp)} — ${escHtml(item.nombre)}${item.id===editingLoteId?' <span style="color:#9b59b6;font-size:.7rem;">(editando)</span>':''}</div>
-          <div style="font-size:.7rem;color:var(--muted);">Empadronamiento ${idx+1} de ${loteEmpadronamientos.length}</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button onclick="verUnoLote(${item.id})" style="background:var(--accent2);color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">👁</button>
-          <button onclick="editarLote(${item.id})" style="background:#9b59b6;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">✏️</button>
-          <button onclick="eliminarDelLote(${item.id})" style="background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:6px 10px;font-size:.75rem;cursor:pointer;">🗑</button>
-        </div>
-      </div>
-    `).join('');
+    const p=document.createElement('p');
+    p.className='lote-vacio';
+    p.textContent='No hay empadronamientos en el lote todavía.';
+    lista.appendChild(p);
   }
+  loteEmpadronamientos.forEach((item,idx)=>{
+    const editando=item.id===editingLoteId;
+    const row=document.createElement('div');
+    row.className='lote-item'+(editando?' editando':'');
+    const info=document.createElement('div');
+    const nom=document.createElement('div');
+    nom.className='lote-item-nombre';
+    nom.textContent=`#${item.numEmp} — ${item.nombre}`;
+    if(editando){
+      const tag=document.createElement('span');
+      tag.className='lote-item-editando';
+      tag.textContent=' (editando)';
+      nom.appendChild(tag);
+    }
+    const num=document.createElement('div');
+    num.className='lote-item-num';
+    num.textContent=`Empadronamiento ${idx+1} de ${loteEmpadronamientos.length}`;
+    info.append(nom,num);
+    const btns=document.createElement('div');
+    btns.className='lote-item-btns';
+    [['👁','ver','verUnoLote'],['✏️','editar','editarLote'],['🗑','borrar','eliminarDelLote']].forEach(([txt,cls,fn])=>{
+      const b=document.createElement('button');
+      b.className='lote-btn lote-btn--'+cls;
+      b.textContent=txt;
+      b.dataset.action=fn;
+      b.dataset.args=JSON.stringify([item.id]);
+      btns.appendChild(b);
+    });
+    row.append(info,btns);
+    lista.appendChild(row);
+  });
   document.getElementById('lote-modal').style.display='block';
   document.body.style.overflow='hidden';
 }
@@ -2062,8 +2155,8 @@ function checkGenerateReady(){
   reqs.forEach(validateField);
   const allFilled=reqs.every(id=>{const el=document.getElementById(id);return el&&el.value.trim();});
   const addrOk=document.getElementById('addr_texto').value.trim()||(document.getElementById('addr_calle').value.trim()&&document.getElementById('addr_cruce').value.trim());
-  const btn=document.querySelector('.btn-generate:not([style*="verde"])');
-  if(btn&&btn.textContent.includes('GENERAR')){
+  const btn=document.getElementById('btn-generar');
+  if(btn){
     if(allFilled&&addrOk){btn.classList.add('ready');btn.classList.remove('incomplete');}
     else{btn.classList.remove('ready');btn.classList.add('incomplete');}
   }
@@ -2092,7 +2185,7 @@ setInterval(()=>{checkGenerateReady();updateProgress();},1500);
 
 // FAB: mostrar al hacer scroll, ocultar cuando el botón principal es visible
 function handleFAB(){
-  const mainBtn=document.querySelector('.btn-generate[onclick="generar()"]');
+  const mainBtn=document.getElementById('btn-generar');
   const fab=document.getElementById('fab-generate');
   if(!mainBtn||!fab)return;
   const rect=mainBtn.getBoundingClientRect();
@@ -2144,7 +2237,7 @@ async function toggleTorch(){
   try{
     torchOn=!torchOn;
     await ocrTrack.applyConstraints({advanced:[{torch:torchOn}]});
-    document.getElementById('torch-btn').style.background=torchOn?'rgba(201,168,76,.4)':'var(--surface2)';
+    document.getElementById('torch-btn').classList.toggle('on',torchOn);
   }catch(e){
     showToast('⚠️ Linterna no disponible en este dispositivo');
     torchOn=false;
@@ -2200,7 +2293,12 @@ function restoreForm(data){
 }
 function ofrecerDeshacer(){
   const t=document.getElementById('toast');
-  t.innerHTML='🗑 Formulario limpiado &nbsp;<button onclick="deshacerLimpiar()" style="background:#fff;color:#007840;border:none;border-radius:14px;padding:4px 14px;font-weight:700;font-size:.8rem;cursor:pointer;">↩ DESHACER</button>';
+  t.textContent='🗑 Formulario limpiado';
+  const b=document.createElement('button');
+  b.className='toast-btn';
+  b.dataset.action='deshacerLimpiar';
+  b.textContent='↩ DESHACER';
+  t.appendChild(b);
   t.style.display='block';
   clearTimeout(window._toastTimer);
   window._toastTimer=setTimeout(()=>{t.style.display='none';undoBackup=null;},10000);
@@ -2283,12 +2381,11 @@ function applyTabState(st){
   if(st.form)restoreForm(st.form);
   negativasActivas=(st.neg||[]).slice();caracActivas=(st.carac||[]).slice();
   obsManualPersona=st.obsP||'';obsManualVeh=st.obsV||'';
-  document.querySelectorAll('[onclick^="toggleNegativa("],[onclick^="toggleCarac("]').forEach(btn=>{
-    const oc=btn.getAttribute('onclick')||'';
-    const m=oc.match(/'([^']*)'\)\s*$/);
-    if(!m)return;
-    const list=oc.startsWith('toggleNegativa(')?negativasActivas:caracActivas;
-    btn.classList.toggle('neg-active',list.includes(m[1]));
+  document.querySelectorAll('[data-action="toggleNegativa"],[data-action="toggleCarac"]').forEach(btn=>{
+    let texto='';
+    try{texto=JSON.parse(btn.dataset.args)[1];}catch(e){return;}
+    const list=btn.dataset.action==='toggleNegativa'?negativasActivas:caracActivas;
+    btn.classList.toggle('neg-active',list.includes(texto));
   });
   if(typeof updateSubmarcaList==='function')updateSubmarcaList();
 }
@@ -2618,6 +2715,7 @@ document.addEventListener('focusin',e=>{
 });
 
 window.onload=()=>{
+  renderTiposVehiculo();
   initDT();loadTheme();loadCompact();updateClock();checkGenerateReady();hideSplash();updateConnIndicator();
   updateGoogleKeyUI();
   const loteCount=restoreLoteIfAny();
